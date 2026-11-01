@@ -1,0 +1,145 @@
+# RoundTFT
+
+A desk dial for a 1.28" round GC9A01 display on an Arduino Uno, driven by a
+Rust desktop app. It shows your Claude Code usage, a clock, live PC stats, and
+any number of custom pages you make yourself (text, command output,
+countdowns, a pomodoro timer).
+
+![RoundTFT Control app](docs/app.png)
+
+## What's in here
+
+| Path | What it is |
+| --- | --- |
+| [`RoundTFT.ino`](RoundTFT.ino) | Arduino firmware: draws the widgets, takes commands over USB serial |
+| [`app/`](app) | **RoundTFT Control**, the Rust (egui) desktop app that controls the screen and feeds it data |
+| [`claude_usage_bridge.py`](claude_usage_bridge.py) | Older, minimal Python script that only sends Claude usage. The app replaces it |
+
+## Widgets
+
+| # | Widget | Ring shows |
+| --- | --- | --- |
+| 1 | Claude 5H | Time elapsed in the current 5-hour block, or tokens vs a budget |
+| 2 | Claude Today | Today's tokens vs a daily goal |
+| 3 | Claude Timer | Time left until the 5-hour block resets |
+| 4 | Claude All | Every Claude number on one screen |
+| 5 | Clock | Seconds of the current minute |
+| 6 | System | CPU load, plus RAM, network, disk and uptime |
+| 7 | Custom | Whatever the app sends: title, value, subtitle, line, ring %, color |
+
+The app can hold any number of **custom pages** that take turns in the
+Custom slot. Each page gets its content from one of:
+
+- **Fixed text**: you type the value and ring %.
+- **Command output**: any shell command, run on an interval. The first line
+  of output is `value|ring%|subtitle|bottom line` (only `value` is required;
+  a bare number from 0 to 100 also fills the ring). Templates included for
+  weather (wttr.in) and laptop battery.
+- **Countdown to a date**: the ring fills as the date gets closer.
+- **Pomodoro timer**: start, pause and reset it from the app.
+
+## Hardware
+
+- Arduino Uno (or Nano)
+- 1.28" 240x240 round TFT, GC9A01 driver
+- Optional: a push button and an LED with a 220 Ω resistor
+
+| Display pin | Arduino pin |
+| --- | --- |
+| VCC | 5V |
+| GND | GND |
+| SCL | 13 (SPI SCK) |
+| SDA | 11 (SPI MOSI) |
+| DC | 9 |
+| CS | 10 |
+| RST | 8 |
+
+| Extra | Arduino pin |
+| --- | --- |
+| Button | 2 and GND (uses the internal pull-up, no resistor) |
+| Auto-cycle LED | 3, through a 220 Ω resistor, to GND |
+
+**Button:** one tap shows the next widget, two taps rotate the screen 90°,
+and a long press (over 1 s) toggles auto-cycle.
+
+## Setup
+
+### 1. Flash the firmware
+
+Install the Arduino libraries **Adafruit GC9A01A** and **Adafruit GFX
+Library** (Library Manager), then open `RoundTFT.ino` and upload it to the
+Uno. The sketch has to live in a folder named `RoundTFT`, so keep the
+repository folder name.
+
+With `arduino-cli`:
+
+```bash
+arduino-cli lib install "Adafruit GC9A01A" "Adafruit GFX Library"
+arduino-cli compile --fqbn arduino:avr:uno -u -p COM3 .
+```
+
+### 2. Build and run the app
+
+Needs a recent stable Rust toolchain.
+
+```bash
+cd app
+cargo run --release
+```
+
+Pick the board's port and press **Connect** (or tick **Auto-connect**). The
+board plays its intro, reports in, and the app starts streaming data. Close
+the Arduino IDE's Serial Monitor first: only one program can use the port at
+a time.
+
+The app is developed and tested on Windows. Clock, System, custom pages and
+the serial link are cross-platform; **Start with Windows** and the battery
+template are Windows-only.
+
+## Claude usage: how it's measured
+
+The app reads your local Claude Code session logs
+(`~/.claude/projects/**/*.jsonl`) and adds up the token counts in them.
+Nothing is sent anywhere except to the board over USB.
+
+- The 5-hour block is **estimated** from your logs: a block starts on the
+  hour of its first message and lasts 5 hours. It is not Anthropic's official
+  limit meter, so it won't match your plan's exact percentage.
+- Only Claude Code on this machine is counted, not chats on claude.ai.
+- Token totals include cache reads, so they look large.
+
+## Serial protocol
+
+115200 baud, one message per line, fields separated by `|`. Fields must not
+be empty (send a space instead).
+
+PC to board:
+
+```text
+U|<5h tokens>|<5h %>|<today tokens>|<msgs>|<time left>|<today %>   Claude usage
+C|<HH:MM>|<SS>|<date>|<weekday>|<extra>[|<color>]                   Clock
+S|<cpu %>|<ram %>|<ram text>|<line 1>|<line 2>[|<color>]            System stats
+M|<title>|<value>|<subtitle>|<line>|<ring %>|<color>                Custom widget
+W|<0-6>    show a widget
+R|<0-3>    set rotation
+A|<0/1>    auto-cycle off/on
+```
+
+Colors are RGB565 in hex, for example `DBAA` for Claude coral.
+
+Board to PC:
+
+```text
+RTFT|READY|<widgets>    finished booting
+MODE|<n>                widget changed (also from the button)
+ROT|<n>                 rotation changed
+AUTO|<0/1>              auto-cycle changed
+```
+
+The Uno's serial receive buffer is only 64 bytes, so the firmware drains it
+into a larger ring buffer during long redraws, and the app spaces lines about
+90 ms apart.
+
+## License
+
+[MIT](LICENSE)

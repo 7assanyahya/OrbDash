@@ -1,0 +1,24 @@
+# Rust build output
+/app/target/
+**/*.rs.bk
+
+# Arduino build output
+/build/
+*.hex
+*.elf
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# Local tool settings
+.claude/
+.vscode/
+.idea/
+
+# OS junk
+.DS_Store
+Thumbs.db
+desktop.ini
