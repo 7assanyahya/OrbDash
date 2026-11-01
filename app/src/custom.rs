@@ -117,6 +117,10 @@ pub fn templates() -> Vec<(&'static str, CustomPage)> {
                 ..base.clone()
             },
         ),
+        
+        printer("3D printer (OctoPrint)", "OCTOPRINT", OCTOPRINT, &base),
+        printer("3D printer (Klipper)", "KLIPPER", KLIPPER, &base),
+        printer("3D printer (UltiMaker)", "ULTIMAKER", ULTIMAKER, &base),
         (
             "Countdown",
             CustomPage {
@@ -142,6 +146,66 @@ pub fn templates() -> Vec<(&'static str, CustomPage)> {
             },
         ),
     ]
+}
+
+// 3D printer pages: PowerShell that asks the printer's own web API and prints
+// `62%|62|PRINTING|1h20m left`, or `READY|0|...` / `OFF|0|...` when it isn't
+// printing. Replace PRINTER_IP (and the OctoPrint API key) in the command.
+// Only single quotes inside: the whole script is one double-quoted argument.
+
+const LEFT: &str = "function L($t){'{0}h{1:00}m left' -f [int][math]::Floor($t/3600),[int][math]::Floor($t%3600/60)}";
+
+const OCTOPRINT: &str = "try{$j=Invoke-RestMethod -TimeoutSec 5 -Headers @{'X-Api-Key'='YOUR_API_KEY'} http://PRINTER_IP/api/job; \
+$p=[int]$j.progress.completion; $s=$j.state; \
+if($s -like 'Printing*'){'{0}%|{0}|PRINTING|{1}' -f $p,(L $j.progress.printTimeLeft)} \
+else{if($s -eq 'Operational'){$s='READY'}; '{0}|{1}|OCTOPRINT|{2}' -f $s.ToUpper(),$p,$j.job.file.display}} \
+catch{'OFF|0|OCTOPRINT|printer not reachable'}";
+
+const KLIPPER: &str = "try{$r=(Invoke-RestMethod -TimeoutSec 5 'http://PRINTER_IP/printer/objects/query?print_stats&display_status').result.status; \
+$s=$r.print_stats.state; $p=[int]($r.display_status.progress*100); $d=$r.print_stats.print_duration; \
+if($s -eq 'printing'){$l=if($p -gt 0){L ($d*100/$p-$d)}else{'starting'}; '{0}%|{0}|PRINTING|{1}' -f $p,$l} \
+else{if($s -eq 'standby'){$s='READY'}; '{0}|{1}|KLIPPER|{2}' -f $s.ToUpper(),$p,$r.print_stats.filename}} \
+catch{'OFF|0|KLIPPER|printer not reachable'}";
+
+const ULTIMAKER: &str = "try{$j=Invoke-RestMethod -TimeoutSec 5 http://PRINTER_IP/api/v1/print_job; \
+$p=[int]($j.progress*100); \
+if($j.state -eq 'printing'){'{0}%|{0}|PRINTING|{1}' -f $p,(L ($j.time_total-$j.time_elapsed))} \
+else{'{0}|{1}|ULTIMAKER|{2}' -f $j.state.ToUpper(),$p,$j.name}} \
+catch{if($_.Exception.Response.StatusCode -eq 404){'READY|0|ULTIMAKER|no print job'}else{'OFF|0|ULTIMAKER|printer not reachable'}}";
+
+// Marlin printers on USB (Biqu B1 and other BTT/STM32 boards) printing from
+// SD: M27 gives bytes done of the file, M31 the time printed so far. The port
+// is found by USB ID (Marlin's LPC176x and STM32 IDs), so the Arduino is never
+// touched; set $n to e.g. 'COM7' to pick it by hand. Native USB boards don't
+// reset when the port opens, so asking mid-print is safe.
+const MARLIN_USB: &str = "try{$n=(Get-CimInstance Win32_SerialPort | ?{$_.PNPDeviceID -match 'VID_1D50|VID_0483&PID_5740'} | select -First 1).DeviceID; \
+if(-not $n){throw 'none'}; \
+$s=New-Object System.IO.Ports.SerialPort $n,115200; $s.DtrEnable=$true; $s.ReadTimeout=300; $s.NewLine=[string][char]10; \
+try{$s.Open()}catch{'BUSY|0|PRINTER|{0} in use' -f $n; return}; \
+$s.DiscardInBuffer(); $s.WriteLine('M27'); $s.WriteLine('M31'); \
+$o=''; $e=(Get-Date).AddSeconds(3); while((Get-Date) -lt $e -and $o -notmatch 'Print time'){try{$o+=$s.ReadLine()+[char]10}catch{}}; $s.Close(); \
+if($o -match 'SD printing byte (\\d+)/(\\d+)'){$p=[int]([double]$matches[1]*100/[math]::Max(1,[double]$matches[2])); $t=0; \
+if($o -match 'Print time: ([^\\r\\n]*)'){foreach($m in [regex]::Matches($matches[1],'(\\d+)\\s*([dhms])')){$t+=[int]$m.Groups[1].Value*@{d=86400;h=3600;m=60;s=1}[$m.Groups[2].Value]}}; \
+$l=if($p -gt 0){L ($t*100/$p-$t)}else{'starting'}; '{0}%|{0}|PRINTING|{1}' -f $p,$l} \
+else{'READY|0|PRINTER|not printing'}} \
+catch{'OFF|0|PRINTER|printer not connected'}";
+
+fn printer(name: &'static str, kind: &str, script: &str, base: &CustomPage) -> (&'static str, CustomPage) {
+    (
+        name,
+        CustomPage {
+            title: "3D PRINT".into(),
+            value: "--".into(),
+            subtitle: kind.into(),
+            line: "set PRINTER_IP".into(),
+            pct: 0,
+            color: [255, 140, 0],
+            source: Source::Command,
+            command: format!("powershell -NoProfile -Command \"{LEFT}; {script}\""),
+            command_secs: 15,
+            ..base.clone()
+        },
+    )
 }
 
 /// Output of a page's command: `value|ring%|subtitle|bottom line`

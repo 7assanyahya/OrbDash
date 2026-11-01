@@ -22,3 +22,9 @@ __pycache__/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# Personal social media posts (not part of the project)
+/social/
+
+# Brand kit build files (the exports themselves are committed)
+/brand/

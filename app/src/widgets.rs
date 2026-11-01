@@ -1,4 +1,4 @@
-//! The seven board widgets: settings, the serial lines that feed them, and a
+//! The board widgets: settings, the serial lines that feed them, and a
 //! preview that mirrors the firmware's layout (240x240 coordinates).
 
 use crate::claude::ClaudeStats;
@@ -8,7 +8,9 @@ use chrono::{Datelike, Local, Timelike, Utc};
 use eframe::egui::Color32;
 use serde::{Deserialize, Serialize};
 
-pub const MODE_NAMES: [&str; 7] = [
+/// Board widgets in firmware order. GT came after Custom so older boards keep
+/// their numbering.
+pub const MODE_NAMES: [&str; 8] = [
     "Claude 5H",
     "Claude Today",
     "Claude Timer",
@@ -16,10 +18,16 @@ pub const MODE_NAMES: [&str; 7] = [
     "Clock",
     "System",
     "Custom",
+    "GT Gauge",
 ];
 pub const MODE_CLOCK: usize = 4;
 pub const MODE_SYSTEM: usize = 5;
 pub const MODE_CUSTOM: usize = 6;
+pub const MODE_GT: usize = 7;
+/// Built-in widgets in the order the app lists them (Custom has its pages)
+pub const BUILTINS: [usize; 7] = [0, 1, 2, 3, 4, 5, MODE_GT];
+/// GT gauge redline, as in the firmware
+pub const GT_RED_FROM: u8 = 85;
 
 // Firmware palette (RGB565 -> RGB)
 pub const CLAUDE: Color32 = Color32::from_rgb(0xD9, 0x77, 0x57);
@@ -47,7 +55,9 @@ pub struct Settings {
     pub auto_connect: bool,
     pub app_rotate: bool,
     pub rotate_secs: u32,
-    pub playlist: [bool; 7],
+    /// Per widget, in firmware order. A Vec so settings saved with fewer
+    /// widgets still load.
+    pub playlist: Vec<bool>,
     pub screen_rotation: u8,
     /// Token budget per 5h block in millions; 0 = ring shows time elapsed
     pub block_limit_m: f32,
@@ -69,7 +79,7 @@ impl Default for Settings {
             auto_connect: true,
             app_rotate: false,
             rotate_secs: 10,
-            playlist: [true, false, false, false, true, true, false],
+            playlist: vec![true, false, false, false, true, true, false, false],
             screen_rotation: 0,
             block_limit_m: 0.0,
             daily_goal_m: 2.0,
@@ -234,6 +244,11 @@ impl Data<'_> {
         )
     }
 
+    pub fn gt_line(&self) -> String {
+        let gpu = self.sys.gpu.map(|g| (g.round() as u32).to_string()).unwrap_or("-".into());
+        format!("G|{}|{gpu}|{}", self.sys.cpu.round() as u32, self.sys.ram_pct())
+    }
+
     pub fn custom_line(&self) -> String {
         let (title, value, sub, line, pct, color) = self.custom();
         format!(
@@ -332,6 +347,14 @@ impl Data<'_> {
                 v.t(160.0, &l1, 1, TEXT);
                 v.t(178.0, &l2, 1, DIM);
             }
+            MODE_GT => {
+                // Face, needle and bars are drawn by the preview itself
+                v.gauge = Some(Gauge {
+                    cpu: self.sys.cpu.round() as u8,
+                    gpu: self.sys.gpu.map(|g| g.round() as u8),
+                    ram: self.sys.ram_pct(),
+                });
+            }
             _ => {
                 let (title, value, sub, line, pct, color) = self.custom();
                 let col = Color32::from_rgb(color[0], color[1], color[2]);
@@ -359,11 +382,20 @@ pub struct Txt {
     pub color: Color32,
 }
 
+#[derive(Clone, Copy)]
+pub struct Gauge {
+    pub cpu: u8,
+    pub gpu: Option<u8>,
+    pub ram: u8,
+}
+
 #[derive(Default)]
 pub struct View {
     pub texts: Vec<Txt>,
     pub pct: u8,
     pub ring: Color32,
+    /// GT widget: drawn as a tachometer instead of the ring and texts
+    pub gauge: Option<Gauge>,
 }
 
 impl View {
@@ -396,14 +428,27 @@ mod tests {
         st.clock_extra = ClockExtra::Text;
         st.clock_text = "T".repeat(60);
         let c = ClaudeStats { block_tokens: 999_999_999_999, today_tokens: u64::MAX / 2, today_msgs: 99999, ..Default::default() };
-        let s = SysStats { cpu: 100.0, ram_used: 64 << 30, ram_total: 64 << 30, net_rx: u64::MAX / 4, net_tx: 1, uptime: 9_999_999, disk_pct: 100 };
+        let s = SysStats { cpu: 100.0, gpu: Some(100.0), ram_used: 64 << 30, ram_total: 64 << 30, net_rx: u64::MAX / 4, net_tx: 1, uptime: 9_999_999, disk_pct: 100 };
         let d = data(&c, &s, &st);
-        for line in [d.claude_line(), d.clock_line(), d.system_line(), d.custom_line()] {
+        assert_eq!(d.gt_line(), "G|100|100|100");
+        for line in [d.claude_line(), d.clock_line(), d.system_line(), d.custom_line(), d.gt_line()] {
             assert!(line.len() < 80, "{} chars: {line}", line.len());
             assert!(line.is_ascii(), "{line}");
             assert!(!line.contains("||"), "empty field: {line}");
         }
         assert_eq!(d.custom_line().split('|').count(), 7);
+        let none = SysStats { gpu: None, ..s };
+        assert_eq!(data(&c, &none, &st).gt_line(), "G|100|-|100");
+    }
+
+    #[test]
+    fn old_settings_load() {
+        // Saved before the GT widget: 7 playlist entries
+        let mut v = serde_json::to_value(Settings::default()).unwrap();
+        v["playlist"] = serde_json::json!([true, true, false, false, true, true, false]);
+        let s: Settings = serde_json::from_value(v).unwrap();
+        assert_eq!(s.playlist.len(), 7);
+        assert_eq!(s.port, "");
     }
 
     #[test]

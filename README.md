@@ -1,11 +1,18 @@
+<p align="center"><img src="brand/png/orbdash-lockup-transparent.png" alt="OrbDash" width="420"></p>
+
+<p align="center"><b>Everything you watch, at a glance.</b></p>
+
 # OrbDash
 
 A desk dial for a 1.28" round GC9A01 display on an Arduino Uno, driven by a
-Rust desktop app. It shows your Claude Code usage, a clock, live PC stats, and
-any number of custom pages you make yourself (text, command output,
-countdowns, a pomodoro timer).
+Rust desktop app. It shows your Claude Code usage, a clock, live PC stats, a
+race-car style gauge, and any number of custom pages you make yourself (text,
+command output, countdowns, a pomodoro timer, 3D printer progress).
 
 ![OrbDash app](docs/app.png)
+
+*The app's dashboard, in demo mode (`ORBDASH_DEMO=1` shows sample Claude
+numbers instead of your own, handy for screenshots).*
 
 ## What's in here
 
@@ -15,6 +22,7 @@ countdowns, a pomodoro timer).
 | [`app/`](app) | **OrbDash**, the Rust (egui) desktop app that controls the screen and feeds it data |
 | [`case/`](case) | 3D-printable case: STL files and the parametric OpenSCAD source |
 | [`docs/`](docs) | Wiring diagram (and the script that draws it) and screenshots |
+| [`brand/`](brand) | Logo, app icon, colours, type and the brand guide |
 | [`claude_usage_bridge.py`](claude_usage_bridge.py) | Older, minimal Python script that only sends Claude usage. The app replaces it |
 
 ## Widgets
@@ -28,6 +36,11 @@ countdowns, a pomodoro timer).
 | 5 | Clock | Seconds of the current minute |
 | 6 | System | CPU load, plus RAM, network, disk and uptime |
 | 7 | Custom | Whatever the app sends: title, value, subtitle, line, ring %, color |
+| 8 | GT Gauge | Race-car style tachometer instead of the ring: the needle is CPU load (0-10 scale, redline from 85%), with GPU and RAM bars below. The needle sweeps to full scale when the widget opens |
+
+GPU load comes from `nvidia-smi` on NVIDIA cards, otherwise from Windows'
+GPU engine counters (the number Task Manager shows). Without either, the GPU
+bar shows `--`.
 
 The app can hold any number of **custom pages** that take turns in the
 Custom slot. Each page gets its content from one of:
@@ -79,6 +92,10 @@ display, so they go to the Uno's SPI pins 13 and 11, not the I2C pins.
 > GC9A01 boards have a 3.3 V regulator and accept this, but if yours is
 > 3.3 V only, power it from the Uno's 3.3V pin and put a level shifter on
 > SCL, SDA, DC, CS and RST.
+
+**No PC:** when nothing arrives for 15 seconds (and at power-up until the
+app connects), the screen shows a waiting animation. It goes back to the
+widget as soon as data comes in.
 
 **Button:** one tap shows the next widget, two taps rotate the screen 90°,
 and a long press (over 1 s) toggles auto-cycle.
@@ -151,7 +168,8 @@ U|<5h tokens>|<5h %>|<today tokens>|<msgs>|<time left>|<today %>   Claude usage
 C|<HH:MM>|<SS>|<date>|<weekday>|<extra>[|<color>]                   Clock
 S|<cpu %>|<ram %>|<ram text>|<line 1>|<line 2>[|<color>]            System stats
 M|<title>|<value>|<subtitle>|<line>|<ring %>|<color>                Custom widget
-W|<0-6>    show a widget
+G|<cpu %>|<gpu %>|<ram %>                                           GT gauge (gpu "-" = no reading)
+W|<0-7>    show a widget
 R|<0-3>    set rotation
 A|<0/1>    auto-cycle off/on
 ```

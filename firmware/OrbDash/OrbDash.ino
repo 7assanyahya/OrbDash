@@ -27,7 +27,7 @@
  * - 1 Tap:           Cycle to next display mode (1 -> 2 -> ... -> 7 -> 1)
  * - 2 Taps:          Rotate screen by 90 degrees (0° -> 90° -> 180° -> 270°)
  * - Long Press (>1s): Toggle AUTO-CYCLE (LED lights up, rotates modes every 8s)
- * - Serial Commands:  Send 'm' (mode), 'r' (rotate 90°), 'a' (auto-cycle), '1'-'7' (modes)
+ * - Serial Commands:  Send 'm' (mode), 'r' (rotate 90°), 'a' (auto-cycle), '1'-'8' (modes)
  *
  * Mode-Specific Ring Behavior (Gauge ring reflects the active mode's data):
  * 1. [5H DIAL]   - Ring shows 5H block token / limit percentage (Coral -> Amber -> Red)
@@ -37,6 +37,7 @@
  * 5. [CLOCK]     - Ring shows seconds of the current minute
  * 6. [SYSTEM]    - Ring shows PC CPU load (Green -> Amber -> Red)
  * 7. [CUSTOM]    - Anything the PC app sends: title, value, subtitle, ring %, color
+ * 8. [GT]        - Race-car style tachometer: needle = CPU, plus GPU and RAM bars
  *
  * Serial protocol (115200 baud, '|' separated, one message per line):
  *   PC -> board
@@ -44,7 +45,8 @@
  *     C|<HH:MM>|<SS>|<date>|<weekday>|<extra>[|<color>]             Clock
  *     S|<cpu %>|<ram %>|<ram text>|<line 1>|<line 2>[|<color>]      System stats
  *     M|<title>|<value>|<subtitle>|<line>|<ring %>|<color 565 hex>  Custom widget
- *     W|<mode 0-6>   show a mode      R|<0-3>  set rotation      A|<0/1>  auto-cycle
+ *     G|<cpu %>|<gpu %>|<ram %>                                     GT gauge (gpu "-" = none)
+ *     W|<mode 0-7>   show a mode      R|<0-3>  set rotation      A|<0/1>  auto-cycle
  *   board -> PC
  *     ORB|READY|<modes>    MODE|<n>   ROT|<n>   AUTO|<0/1>
  *   Fields must not be empty (send a space instead).
@@ -71,7 +73,9 @@ Adafruit_GC9A01A tft(TFT_CS, TFT_DC, TFT_RST);
 #define COLOR_TRACK   0x18E3 // Dark gray gauge track
 #define COLOR_DIM     0x7BEF // Mid gray labels
 #define COLOR_TEXT    0xFFFF // White
-#define COLOR_CLAUDE  0xDBAA // Claude coral (#D97757)
+#define COLOR_CLAUDE  0xDBAA // Claude coral (#D97757): Claude widgets only
+#define COLOR_BRAND   0x8AFE // OrbDash Orb Violet (#8B5CF6)
+#define COLOR_EMBER   0xFBC8 // OrbDash Ember (#FF7A45)
 #define COLOR_WARN    0xFD20 // Amber
 #define COLOR_ALERT   0xF800 // Red
 #define COLOR_LIVE    0x07E0 // Green
@@ -103,8 +107,16 @@ enum DisplayMode {
   MODE_CLOCK     = 4,
   MODE_SYSTEM    = 5,
   MODE_CUSTOM    = 6,
-  NUM_MODES      = 7
+  MODE_GT        = 7,
+  NUM_MODES      = 8
 };
+
+// GT gauge: own face instead of the ring, needle shows CPU
+#define GT_YELLOW     0xE680 // Ring colour
+#define GT_BAND_IN    80     // yellow ring inner/outer radius
+#define GT_BAND_OUT   103
+#define GT_NEEDLE_LEN 100    // needle tip radius (inside the ring)
+#define GT_RED_FROM   85     // redline starts here (%)
 
 bool booting = true;  // mode/rotation changes during boot only update state
 
@@ -154,6 +166,11 @@ char sysLine1[24] = "";
 char sysLine2[24] = "";
 uint16_t sysColor = COLOR_LIVE;
 
+// GT widget (CPU and RAM are shared with the system widget)
+byte gpuPct = 255;    // 255 = the PC has no GPU reading
+int gtShown = -1;     // needle position in %, -1 = not drawn
+bool gtSweep = false; // needle sweeps to full scale when the widget opens
+
 // Custom widget
 char custTitle[12] = "CUSTOM";
 char custValue[9] = "--";
@@ -165,6 +182,8 @@ uint16_t custColor = COLOR_PURPLE;
 // Display state
 bool textDirty = true;
 bool wasLinked = false;
+bool waiting = false;   // no PC: the waiting screen replaces the widgets
+int waitHead = 0;       // spinner head, degrees
 int shownPct = 0;
 uint16_t ringColor = COLOR_CLAUDE;  // color of the filled part of the ring
 byte pctTextLen = 0;
@@ -194,10 +213,17 @@ void drawArc(int fromT, int toT, uint16_t color);
 void drawTick(int deg, uint16_t color);
 uint16_t levelColor(int pct);
 void printCentered(const char *s, int y, byte size, uint16_t color);
+void printCenteredP(const __FlashStringHelper *s, int y, byte size, uint16_t color);
 void printBand(const char *s, int y, byte size, uint16_t color, int bandW);
 void bootAnimation();
 void bootWait(int ms);
 void getUptimeStr(char *buf, size_t sz);
+void drawGtFace();
+void gtUpdate(bool linked);
+void gtReadout(bool linked);
+void setWaiting(bool on);
+void drawWaitScreen(bool withFrame);
+void waitAnimation();
 
 void setup() {
   Serial.begin(115200);
@@ -214,7 +240,8 @@ void setup() {
   booting = false;
   tft.setRotation(screenRotation);  // in case it was changed while booting
   tft.fillScreen(COLOR_BG);
-  drawStaticUI();
+  setWaiting(!isLinked());
+  wasLinked = isLinked();
 
   Serial.print(F("ORB|READY|"));
   Serial.println(NUM_MODES);
@@ -258,13 +285,13 @@ void typeCentered(const char *s, int y, byte size, uint16_t color, int perChar) 
 void bootAnimation() {
   for (byte wave = 0; wave < 2; wave++) {
     for (int r = 4; r <= 140; r += 8) {
-      if (r <= 118) tft.drawCircle(CX, CY, r, wave ? COLOR_DIM : COLOR_CLAUDE);
+      if (r <= 118) tft.drawCircle(CX, CY, r, wave ? COLOR_DIM : COLOR_BRAND);
       if (r - 24 > 0) tft.drawCircle(CX, CY, r - 24, COLOR_BG);
       bootWait(12);
     }
   }
 
-  typeCentered("ORBDASH", 100, 3, COLOR_CLAUDE, 100);
+  typeCentered("ORBDASH", 100, 3, COLOR_BRAND, 100);
   bootWait(100);
   typeCentered("DESK DASHBOARD", 132, 1, COLOR_DIM, 40);
   bootWait(250);
@@ -274,7 +301,7 @@ void bootAnimation() {
     bootWait(5);
   }
   for (int p = 0; p < 100; p += 2) {
-    drawArc(p * GAUGE_SWEEP / 10, (p + 2) * GAUGE_SWEEP / 10, levelColor(p));
+    drawArc(p * GAUGE_SWEEP / 10, (p + 2) * GAUGE_SWEEP / 10, p < 75 ? COLOR_BRAND : COLOR_EMBER);
     bootWait(10);
   }
   bootWait(300);
@@ -307,13 +334,20 @@ void loop() {
   if (linked != wasLinked) {
     wasLinked = linked;
     textDirty = true;
+    setWaiting(!linked);
   }
 
-  int target = linked ? getTargetPctForMode() : 0;
-  animateGauge(target);
-  updateOrbit();
+  if (waiting) {
+    waitAnimation();
+  } else if (currentMode == MODE_GT) {
+    gtUpdate(linked);
+  } else {
+    int target = linked ? getTargetPctForMode() : 0;
+    animateGauge(target);
+    updateOrbit();
+  }
 
-  if (textDirty) {
+  if (textDirty && !waiting) {
     drawReadout(linked);
     textDirty = false;
   }
@@ -493,6 +527,7 @@ void setRotation(byte rot) {
   clearScreen();
   shownPct = 0;
   pctTextLen = 0;
+  gtShown = -1;
   drawStaticUI();
   textDirty = true;
 }
@@ -502,14 +537,23 @@ void rotateScreen() {
 }
 
 void switchMode(byte newMode) {
+  byte oldMode = currentMode;
   currentMode = newMode % NUM_MODES;
   report(F("MODE"), currentMode);
   if (booting) return;
-  // Keep the ring: only the inside is cleared, and the ring then animates
-  // from its old value to the new widget's value
   pctTextLen = 0;
-  clearInner();
-  drawStaticUI(false);
+  if (oldMode == MODE_GT || currentMode == MODE_GT) {
+    // The GT face has no ring: redraw the whole screen
+    clearScreen();
+    gtShown = -1;
+    gtSweep = true;
+    drawStaticUI();
+  } else {
+    // Keep the ring: only the inside is cleared, and the ring then animates
+    // from its old value to the new widget's value
+    clearInner();
+    drawStaticUI(false);
+  }
   textDirty = true;
 }
 
@@ -585,7 +629,7 @@ void parseLine() {
       char *col = strtok(NULL, "|");
       if (col) {
         uint16_t c = strtoul(col, NULL, 16);
-        if (c != sysColor && currentMode == MODE_SYSTEM && !booting) printCentered("SYSTEM", 36, 2, c);
+        if (c != sysColor && currentMode == MODE_SYSTEM && !booting) printCenteredP(F("SYSTEM"), 36, 2, c);
         sysColor = c;
       }
       markRx(currentMode == MODE_SYSTEM);
@@ -607,6 +651,16 @@ void parseLine() {
         tft.fillRect(CX - 48, 36, 96, 16, COLOR_BG);
       }
       markRx(currentMode == MODE_CUSTOM);
+      break;
+    }
+    case 'G': {
+      char *f = strtok(NULL, "|");
+      if (f) cpuPct = constrain(atoi(f), 0, 100);
+      f = strtok(NULL, "|");
+      if (f) gpuPct = isdigit(f[0]) ? constrain(atoi(f), 0, 100) : 255;
+      f = strtok(NULL, "|");
+      if (f) ramPct = constrain(atoi(f), 0, 100);
+      markRx(currentMode == MODE_GT);
       break;
     }
     case 'W': {
@@ -725,6 +779,15 @@ void printCentered(const char *s, int y, byte size, uint16_t color) {
   }
 }
 
+// Fixed labels live in flash (F("...")): every plain string literal also
+// takes RAM on the Uno, and RAM is the tighter limit
+void printCenteredP(const __FlashStringHelper *s, int y, byte size, uint16_t color) {
+  char buf[24];
+  strncpy_P(buf, (const char *)s, sizeof(buf) - 1);
+  buf[sizeof(buf) - 1] = '\0';
+  printCentered(buf, y, size, color);
+}
+
 // Text in a band `bandW` px wide. Padded and overwritten in place (no clear),
 // so refreshing it never flickers.
 void printBand(const char *s, int y, byte size, uint16_t color, int bandW) {
@@ -754,6 +817,14 @@ uint16_t levelColor(int pct) {
 // Static UI per Mode
 // -------------------------------------------------------------
 void drawStaticUI(bool withFrame) {
+  if (waiting) {
+    drawWaitScreen(withFrame);
+    return;
+  }
+  if (currentMode == MODE_GT) {
+    drawGtFace();
+    return;
+  }
   if (withFrame) {
     tft.drawCircle(CX, CY, 118, COLOR_TRACK);
     drawArc(0, GAUGE_SWEEP * 10, COLOR_TRACK);
@@ -765,29 +836,29 @@ void drawStaticUI(bool withFrame) {
 
   switch (currentMode) {
     case MODE_5H_DIAL:
-      printCentered("CLAUDE", 36, 2, COLOR_CLAUDE);
-      printCentered("5H WINDOW", 58, 1, COLOR_DIM);
-      printCentered("TOKENS", 136, 1, COLOR_DIM);
+      printCenteredP(F("CLAUDE"), 36, 2, COLOR_CLAUDE);
+      printCenteredP(F("5H WINDOW"), 58, 1, COLOR_DIM);
+      printCenteredP(F("TOKENS"), 136, 1, COLOR_DIM);
       tft.drawFastHLine(CX - 40, 150, 80, COLOR_TRACK);
       break;
 
     case MODE_TODAY:
-      printCentered("CLAUDE", 36, 2, COLOR_CLAUDE);
-      printCentered("TODAY USAGE", 58, 1, COLOR_DIM);
-      printCentered("TOTAL TOKENS", 136, 1, COLOR_DIM);
+      printCenteredP(F("CLAUDE"), 36, 2, COLOR_CLAUDE);
+      printCenteredP(F("TODAY USAGE"), 58, 1, COLOR_DIM);
+      printCenteredP(F("TOTAL TOKENS"), 136, 1, COLOR_DIM);
       tft.drawFastHLine(CX - 40, 150, 80, COLOR_TRACK);
       break;
 
     case MODE_TIMER:
-      printCentered("5H TIMER", 36, 2, COLOR_CYAN);
-      printCentered("5H RESET COUNTDOWN", 58, 1, COLOR_DIM);
-      printCentered("TIME REMAINING", 136, 1, COLOR_DIM);
+      printCenteredP(F("5H TIMER"), 36, 2, COLOR_CYAN);
+      printCenteredP(F("5H RESET COUNTDOWN"), 58, 1, COLOR_DIM);
+      printCenteredP(F("TIME REMAINING"), 136, 1, COLOR_DIM);
       tft.drawFastHLine(CX - 40, 150, 80, COLOR_TRACK);
       break;
 
     case MODE_DASHBOARD:
-      printCentered("CLAUDE", 32, 2, COLOR_CLAUDE);
-      printCentered("ALL METRICS", 50, 1, COLOR_DIM);
+      printCenteredP(F("CLAUDE"), 32, 2, COLOR_CLAUDE);
+      printCenteredP(F("ALL METRICS"), 50, 1, COLOR_DIM);
       tft.drawFastHLine(CX - 50, 62, 100, COLOR_TRACK);
       tft.drawFastHLine(CX - 50, 172, 100, COLOR_TRACK);
       break;
@@ -797,8 +868,8 @@ void drawStaticUI(bool withFrame) {
       break;
 
     case MODE_SYSTEM:
-      printCentered("SYSTEM", 36, 2, sysColor);
-      printCentered("CPU LOAD", 58, 1, COLOR_DIM);
+      printCenteredP(F("SYSTEM"), 36, 2, sysColor);
+      printCenteredP(F("CPU LOAD"), 58, 1, COLOR_DIM);
       tft.drawFastHLine(CX - 40, 150, 80, COLOR_TRACK);
       break;
 
@@ -1048,19 +1119,235 @@ void drawReadout(bool linked) {
       printPad(custLine, 160, 1, COLOR_TEXT, 22);
       break;
     }
+
+    case MODE_GT:
+      gtReadout(linked);
+      break;
   }
 
   drawLinkStatus(linked);
 }
 
+// -------------------------------------------------------------
+// GT gauge: race-car tachometer. Yellow ring with bold black numbers 0-10
+// (x10 % CPU), white tick bars outside it, red over the redline, a long
+// needle from a silver hub, and a digital readout under the hub.
+// -------------------------------------------------------------
+
+// Colour under pixel (x, y) of the face, so the needle can be erased exactly.
+// drawGtRing() fills with the same rule.
+uint16_t gtBgAt(int x, int y) {
+  long d = (long)(x - CX) * (x - CX) + (long)(y - CY) * (y - CY);
+  return (d >= (long)GT_BAND_IN * GT_BAND_IN && d <= (long)GT_BAND_OUT * GT_BAND_OUT) ? GT_YELLOW : COLOR_BG;
+}
+
+// Largest w with w*w <= n (or < n when `strict`)
+int isqrtFloor(long n, bool strict) {
+  if (n <= 0) return strict ? -1 : 0;
+  int w = sqrt(n);
+  while ((long)(w + 1) * (w + 1) <= n) w++;
+  while ((long)w * w > n || (strict && (long)w * w >= n)) w--;
+  return w;
+}
+
+void drawGtRing() {
+  for (int dy = -GT_BAND_OUT; dy <= GT_BAND_OUT; dy++) {
+    int wo = isqrtFloor((long)GT_BAND_OUT * GT_BAND_OUT - (long)dy * dy, false);
+    int wi = isqrtFloor((long)GT_BAND_IN * GT_BAND_IN - (long)dy * dy, true);  // -1: row misses the hole
+    tft.drawFastHLine(CX - wo, CY + dy, wo - wi, GT_YELLOW);
+    tft.drawFastHLine(CX + wi + 1, CY + dy, wo - wi, GT_YELLOW);
+    if ((dy & 7) == 0) pumpSerial();
+  }
+}
+
+// Radial line at `t` tenths of a degree along the sweep
+void gtRay(int t, byte r0, byte r1, uint16_t color) {
+  float a = (GAUGE_START + t / 10.0) * DEG2RAD;
+  float c = cos(a), s = sin(a);
+  tft.drawLine(CX + c * r0, CY + s * r0, CX + c * r1, CY + s * r1, color);
+}
+
+// Bold black number on the ring: drawn twice, 1 px apart, with no
+// background, so redrawing it over the repaired ring is seamless
+void gtNumber(byte i) {
+  float a = (GAUGE_START + i * 27) * DEG2RAD;
+  int r = (GT_BAND_IN + GT_BAND_OUT) / 2;
+  int x = CX + cos(a) * r - (i < 10 ? 5 : 11);
+  int y = CY + sin(a) * r - 7;
+  tft.setTextSize(2);
+  tft.setTextColor(COLOR_BG);
+  for (byte b = 0; b < 2; b++) {
+    tft.setCursor(x + b, y);
+    tft.print(i);
+  }
+}
+
+void drawGtFace() {
+  drawGtRing();
+  // Red bar outside the ring over the redline
+  for (int t = GT_RED_FROM * 27; t <= GAUGE_SWEEP * 10; t += 4) {
+    gtRay(t, GT_BAND_OUT + 2, GT_BAND_OUT + 6, COLOR_ALERT);
+    if (t % 40 == 0) pumpSerial();
+  }
+  // Minor ticks every 2 %, white bars every 10 %
+  for (byte p = 0; p <= 100; p += 2) {
+    bool red = p >= GT_RED_FROM;
+    if (p % 10 == 0) {
+      for (char d = -5; d <= 5; d += 5) gtRay(p * 27 + d, GT_BAND_OUT + 2, 118, red ? COLOR_ALERT : COLOR_TEXT);
+    } else {
+      gtRay(p * 27, 111, 117, red ? COLOR_ALERT : GT_YELLOW);
+    }
+    pumpSerial();
+  }
+  for (byte i = 0; i <= 10; i++) gtNumber(i);
+
+  // Silver hub
+  tft.fillCircle(CX, CY, 8, 0x8410);
+  tft.fillCircle(CX, CY, 5, 0xC618);
+
+  tft.setTextSize(1);
+  tft.setTextColor(COLOR_DIM, COLOR_BG);
+  tft.setCursor(CX - 15, 170);
+  tft.print(F("CPU %"));
+  tft.setCursor(CX - 15, 226);
+  tft.print(F("x10 %"));
+}
+
+// Needle pixel by pixel: 3 px wide near the hub, 1 px at the tip. Erasing
+// puts back the face colour of each pixel (ring or black), then the
+// numbers it crossed are redrawn.
+void gtNeedle(int pct, bool erase) {
+  float a = (GAUGE_START + pct * 2.7) * DEG2RAD;
+  float c = cos(a), s = sin(a);
+  for (byte r = 10; r <= GT_NEEDLE_LEN; r++) {
+    char w = r < 70 ? 1 : 0;
+    for (char o = -w; o <= w; o++) {
+      int x = CX + lround(c * r - s * o);
+      int y = CY + lround(s * r + c * o);
+      tft.drawPixel(x, y, erase ? gtBgAt(x, y) : COLOR_TEXT);
+    }
+    if ((r & 15) == 0) pumpSerial();
+  }
+}
+
+// Move the needle one step toward CPU load (or full scale while sweeping)
+void gtUpdate(bool linked) {
+  if (gtSweep && gtShown >= 100) gtSweep = false;
+  int target = gtSweep ? 100 : (linked ? cpuPct : 0);
+  if (gtShown == target) return;
+
+  int next = 0;
+  if (gtShown >= 0) {
+    int d = target - gtShown;
+    int step = gtSweep ? 5 : max(1, abs(d) / 3);
+    next = gtShown + constrain(d, -step, step);
+    gtNeedle(gtShown, true);
+    for (byte i = gtShown / 10; i <= gtShown / 10 + 1 && i <= 10; i++) {
+      if (abs(i * 10 - gtShown) <= 5) gtNumber(i);
+    }
+  }
+  gtNeedle(next, false);
+  gtShown = next;
+}
+
+// Digital readout under the hub: CPU big, then GPU and RAM. Kept inside
+// the wedge the needle never sweeps, so it never needs repairing.
+void gtReadout(bool linked) {
+  static byte lastLen = 0;
+  char v[8];
+  if (linked) itoa(cpuPct, v, 10);
+  else strcpy(v, "--");
+  byte len = strlen(v);
+  if (len != lastLen) {
+    tft.fillRect(CX - 27, 146, 54, 22, COLOR_BG);
+    lastLen = len;
+  }
+  tft.setTextSize(3);
+  tft.setTextColor(linked && cpuPct >= GT_RED_FROM ? COLOR_ALERT : COLOR_TEXT, COLOR_BG);
+  tft.setCursor(CX - len * 9 + 1, 146);
+  tft.print(v);
+
+  // "GPU 42  RAM 48" in fixed-width fields, overwritten in place
+  tft.setTextSize(1);
+  tft.setCursor(CX - 42, 180);
+  for (byte k = 0; k < 2; k++) {
+    byte p = k ? ramPct : gpuPct;
+    tft.setTextColor(COLOR_DIM, COLOR_BG);
+    tft.print(k ? F("  RAM") : F("GPU"));
+    if (linked && p <= 100) snprintf(v, sizeof(v), "%3d", p);
+    else strcpy(v, " --");
+    tft.setTextColor(linked && p <= 100 && p >= GT_RED_FROM ? COLOR_ALERT : COLOR_TEXT, COLOR_BG);
+    tft.print(v);
+  }
+}
+
+// -------------------------------------------------------------
+// Waiting screen: shown while no PC is sending. A violet spinner chases
+// round the full ring and three dots pulse. When data arrives the widget
+// that was showing comes back.
+// -------------------------------------------------------------
+#define WAIT_TAIL 80  // spinner length, degrees
+#define WAIT_STEP 6   // degrees per frame
+
+void setWaiting(bool on) {
+  waiting = on;
+  clearScreen();
+  shownPct = 0;
+  pctTextLen = 0;
+  gtShown = -1;
+  gtSweep = currentMode == MODE_GT;
+  drawStaticUI();
+  textDirty = true;
+}
+
+// Radial lines across the ring every 0.5 deg from `from` to `to` (degrees,
+// any range). Painting and erasing use the same lines, so nothing is left.
+void waitArc(int from, int to, uint16_t color) {
+  for (int t = from * 2; t <= to * 2; t++) {
+    float a = t * 0.5 * DEG2RAD;
+    float c = cos(a), s = sin(a);
+    tft.drawLine(CX + c * GAUGE_R_IN, CY + s * GAUGE_R_IN, CX + c * GAUGE_R_OUT, CY + s * GAUGE_R_OUT, color);
+    if ((t & 15) == 0) pumpSerial();
+  }
+}
+
+void drawWaitScreen(bool withFrame) {
+  if (withFrame) {
+    tft.drawCircle(CX, CY, 118, COLOR_TRACK);
+    waitArc(0, 360, COLOR_TRACK);
+    waitArc(waitHead - WAIT_TAIL, waitHead - WAIT_STEP, COLOR_BRAND);
+    waitArc(waitHead - WAIT_STEP + 1, waitHead, COLOR_TEXT);
+  }
+  printCenteredP(F("ORBDASH"), 70, 3, COLOR_BRAND);
+  printCenteredP(F("WAITING FOR PC"), 108, 1, COLOR_TEXT);
+  printCenteredP(F("START THE ORBDASH APP"), 156, 1, COLOR_DIM);
+  printCenteredP(F("USB  115200"), 170, 1, COLOR_DIM);
+}
+
+void waitAnimation() {
+  // Coral body with a white head: the tail end goes back to the track, the
+  // old head turns coral, and a new head is drawn in front of it
+  waitArc(waitHead - WAIT_TAIL, waitHead - WAIT_TAIL + WAIT_STEP - 1, COLOR_TRACK);
+  waitArc(waitHead - WAIT_STEP + 1, waitHead, COLOR_BRAND);
+  waitArc(waitHead + 1, waitHead + WAIT_STEP, COLOR_TEXT);
+  waitHead = (waitHead + WAIT_STEP) % 360;
+
+  // Three dots, lit one after another
+  for (byte i = 0; i < 3; i++) {
+    tft.fillCircle(CX - 14 + i * 14, 132, 3, (frameCount / 8) % 4 == i ? COLOR_EMBER : COLOR_TRACK);
+  }
+}
+
 void drawLinkStatus(bool linked) {
+  if (waiting) return;
+  if (currentMode == MODE_GT) return;  // its line would sit on the yellow ring
   const int y = 200;
 
   bool on = linked || (frameCount / 15) % 2 == 0;
   uint16_t dot = linked ? COLOR_LIVE : COLOR_ALERT;
   const char *label = linked ? "LIVE" : "OFF";
 
-  const char *modeNames[] = {"5H", "TODAY", "TIMER", "ALL", "CLOCK", "SYS", "CUSTOM"};
+  const char *modeNames[] = {"5H", "TODAY", "TIMER", "ALL", "CLOCK", "SYS", "CUSTOM", "GT"};
   char tag[22];
   if (autoCycle) {
     snprintf(tag, sizeof(tag), "%s [AUTO %s]", label, modeNames[currentMode]);
@@ -1071,7 +1358,7 @@ void drawLinkStatus(bool linked) {
   // Fixed 18-char field: overwriting it in place means no clear, no flicker
   byte n = strlen(tag);
   while (n < 18) tag[n++] = ' ';
-  tag[18] = ' ';
+  tag[18] = '\0';
   const int x = CX - (10 + 18 * 6) / 2;
   tft.fillCircle(x + 3, y + 4, 3, on ? dot : COLOR_BG);
   tft.setTextSize(1);

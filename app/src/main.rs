@@ -9,6 +9,7 @@ mod claude;
 mod custom;
 mod link;
 mod system;
+mod ui;
 mod widgets;
 
 use claude::{ClaudeScanner, ClaudeStats};
@@ -24,8 +25,6 @@ use widgets::*;
 const SETTINGS_KEY: &str = "roundtft_settings";
 /// The board takes a few seconds to boot (bootloader + intro animation)
 const BOOT_TIMEOUT: Duration = Duration::from_secs(9);
-/// Number of built-in widgets before the board's CUSTOM slot
-const BUILTINS: usize = MODE_CUSTOM;
 
 const APP_NAME: &str = "OrbDash";
 /// Name the app had before; its saved settings are carried over once
@@ -47,6 +46,7 @@ fn main() -> eframe::Result {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title(APP_NAME)
+            .with_icon(eframe::icon_data::from_png_bytes(include_bytes!("../assets/icon.png")).expect("icon.png"))
             .with_inner_size([1100.0, 700.0])
             .with_min_inner_size([880.0, 560.0]),
         ..Default::default()
@@ -76,13 +76,14 @@ fn spawn_collector(shared: Arc<Mutex<Shared>>, ctx: egui::Context) {
         let mut last_claude: Option<Instant> = None;
         let mut last_run: HashMap<u64, (Instant, String)> = HashMap::new();
         let running: Arc<Mutex<HashSet<u64>>> = Arc::default();
+        let demo = std::env::var_os("ORBDASH_DEMO").is_some();
 
         loop {
             let stats = sys.sample();
             shared.lock().unwrap().sys = stats;
 
             if last_claude.is_none_or(|t| t.elapsed() >= Duration::from_secs(5)) {
-                let c = scanner.scan();
+                let c = if demo { demo_claude() } else { scanner.scan() };
                 let mut sh = shared.lock().unwrap();
                 sh.claude = c;
                 sh.claude_scanned = true;
@@ -114,6 +115,17 @@ fn spawn_collector(shared: Arc<Mutex<Shared>>, ctx: egui::Context) {
             std::thread::sleep(Duration::from_secs(1));
         }
     });
+}
+
+/// ORBDASH_DEMO=1: sample Claude numbers instead of your logs, for screenshots
+fn demo_claude() -> ClaudeStats {
+    ClaudeStats {
+        block_tokens: 3_400_000,
+        block_start: Some(chrono::Utc::now() - chrono::Duration::minutes(186)),
+        today_tokens: 8_100_000,
+        today_msgs: 41,
+        log_files: 12,
+    }
 }
 
 #[cfg(windows)]
@@ -195,11 +207,13 @@ enum Slot {
 
 #[derive(PartialEq, Clone, Copy)]
 enum Tab {
+    Dashboard,
+    Widgets,
+    Pages,
     Claude,
-    Clock,
     System,
-    Custom,
-    App,
+    Clock,
+    Settings,
 }
 
 struct Board {
@@ -236,11 +250,14 @@ struct App {
 
 impl App {
     fn new(cc: &eframe::CreationContext) -> Self {
-        let s: Settings = cc
+        let mut s: Settings = cc
             .storage
             .and_then(|st| eframe::get_value(st, SETTINGS_KEY))
             .unwrap_or_default();
+        // Settings from before a widget was added have a shorter playlist
+        s.playlist.resize(MODE_NAMES.len(), false);
 
+        ui::apply_theme(&cc.egui_ctx);
         let shared = Arc::new(Mutex::new(Shared::default()));
         spawn_collector(shared.clone(), cc.egui_ctx.clone());
 
@@ -254,7 +271,7 @@ impl App {
             ports: link::list_ports(),
             status: "Not connected".into(),
             log: VecDeque::new(),
-            tab: Tab::Claude,
+            tab: Tab::Dashboard,
             preview: Slot::Mode(0),
             board_page: None,
             edit_page: first_page,
@@ -359,7 +376,7 @@ impl App {
                     b.ready = true;
                 }
                 ("MODE", Some(m)) => {
-                    b.mode = m.min(MODE_CUSTOM);
+                    b.mode = m.min(MODE_NAMES.len() - 1);
                     need_page = b.mode == MODE_CUSTOM && self.board_page.is_none();
                 }
                 ("ROT", Some(r)) => b.rotation = r as u8 % 4,
@@ -438,6 +455,7 @@ impl App {
             MODE_CLOCK => d.clock_line(),
             MODE_SYSTEM => d.system_line(),
             MODE_CUSTOM => d.custom_line(),
+            MODE_GT => d.gt_line(),
             _ => d.claude_line(),
         })
     }
@@ -448,7 +466,11 @@ impl App {
 
     /// Built-ins ticked in the playlist, then custom pages in rotation
     fn rotation(&self) -> Vec<Slot> {
-        let mut v: Vec<Slot> = (0..BUILTINS).filter(|&m| self.s.playlist[m]).map(Slot::Mode).collect();
+        let mut v: Vec<Slot> = BUILTINS
+            .into_iter()
+            .filter(|&m| self.s.playlist.get(m).copied().unwrap_or(false))
+            .map(Slot::Mode)
+            .collect();
         v.extend(self.s.customs.iter().filter(|p| p.in_rotation).map(|p| Slot::Page(p.id)));
         v
     }
@@ -514,16 +536,22 @@ impl App {
             return;
         }
 
-        // Clock + system every second, Claude every 5 s. The custom page every
-        // 5 s, every second for timers, and right away after an edit.
+        // Clock + system every second (and the GT gauge while it's showing),
+        // Claude every 5 s. The custom page every 5 s, every second for
+        // timers, and right away after an edit.
         let page_ticks = self.board_page.and_then(|id| self.page(id)).is_some_and(|p| p.source.ticks());
         let on_custom = self.board.as_ref().is_some_and(|b| b.mode == MODE_CUSTOM);
+        let on_gt = self.board.as_ref().is_some_and(|b| b.mode == MODE_GT);
         if self.last_fast.elapsed() >= Duration::from_secs(1) {
             self.last_fast = Instant::now();
             let clock = self.line_for(MODE_CLOCK);
             let sys = self.line_for(MODE_SYSTEM);
             self.send(clock);
             self.send(sys);
+            if on_gt {
+                let gt = self.line_for(MODE_GT);
+                self.send(gt);
+            }
             if page_ticks && on_custom {
                 self.custom_dirty = true;
             }
@@ -565,13 +593,7 @@ impl eframe::App for App {
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        egui::Panel::top("top").show(ui, |ui| self.top_bar(ui));
-        egui::Panel::left("widgets").exact_size(280.0).show(ui, |ui| {
-            egui::ScrollArea::vertical().show(ui, |ui| self.widget_panel(ui));
-        });
-        egui::Panel::right("settings").exact_size(360.0).show(ui, |ui| self.settings_panel(ui));
-        egui::Panel::bottom("log").resizable(true).default_size(110.0).show(ui, |ui| self.log_panel(ui));
-        egui::CentralPanel::default().show(ui, |ui| self.preview(ui));
+        self.ui_root(ui);
     }
 
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
@@ -579,571 +601,8 @@ impl eframe::App for App {
     }
 }
 
-// ---------------------------------------------------------------------------
-// UI
-// ---------------------------------------------------------------------------
-
 fn rgb([r, g, b]: [u8; 3]) -> Color32 {
     Color32::from_rgb(r, g, b)
-}
-
-impl App {
-    fn top_bar(&mut self, ui: &mut egui::Ui) {
-        ui.add_space(4.0);
-        ui.horizontal(|ui| {
-            ui.label(RichText::new("OrbDash").strong().size(18.0).color(CLAUDE));
-            ui.separator();
-
-            let connected = self.link.is_some();
-            ui.add_enabled_ui(!connected, |ui| {
-                let selected = if self.s.port.is_empty() { "Pick a port".to_string() } else { self.s.port.clone() };
-                egui::ComboBox::from_id_salt("port")
-                    .selected_text(selected)
-                    .width(240.0)
-                    .show_ui(ui, |ui| {
-                        for p in &self.ports {
-                            ui.selectable_value(&mut self.s.port, p.name.clone(), &p.label);
-                        }
-                        if self.ports.is_empty() {
-                            ui.label("No serial ports");
-                        }
-                    });
-            });
-
-            if connected {
-                if ui.button("Disconnect").clicked() {
-                    // Stop auto-reconnect from immediately reopening it
-                    self.s.auto_connect = false;
-                    self.disconnect("Disconnected");
-                }
-            } else if ui.button("Connect").clicked() {
-                self.connect(ui.ctx());
-            }
-            ui.checkbox(&mut self.s.auto_connect, "Auto-connect");
-
-            ui.separator();
-            let col = match &self.board {
-                Some(b) if b.ready => LIVE,
-                Some(_) => WARN,
-                None => Color32::GRAY,
-            };
-            let (dot, _) = ui.allocate_exact_size(Vec2::splat(12.0), egui::Sense::hover());
-            ui.painter().circle_filled(dot.center(), 5.0, col);
-            ui.label(&self.status);
-        });
-        ui.add_space(4.0);
-    }
-
-    fn widget_panel(&mut self, ui: &mut egui::Ui) {
-        ui.add_space(6.0);
-        ui.heading("Widgets");
-        ui.label(RichText::new("Click to show it on the screen. Tick to include it in rotation.").small().weak());
-        ui.add_space(6.0);
-
-        let showing = self.showing();
-        let live = self.board_ready();
-        let mut clicked = None;
-        for m in 0..BUILTINS {
-            ui.horizontal(|ui| {
-                ui.checkbox(&mut self.s.playlist[m], "");
-                if slot_button(ui, MODE_NAMES[m], showing == Slot::Mode(m), live).clicked() {
-                    clicked = Some(Slot::Mode(m));
-                }
-            });
-        }
-
-        ui.add_space(8.0);
-        ui.horizontal(|ui| {
-            ui.label(RichText::new("Custom pages").strong());
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if let Some(page) = template_menu(ui, "+ Add") {
-                    let id = self.add_page(page);
-                    clicked = Some(Slot::Page(id));
-                }
-            });
-        });
-        if self.s.customs.is_empty() {
-            ui.label(RichText::new("No pages yet. Add one from a template.").weak());
-        }
-        let mut delete = None;
-        for p in &mut self.s.customs {
-            ui.horizontal(|ui| {
-                ui.checkbox(&mut p.in_rotation, "");
-                let w = ui.available_width() - 28.0;
-                let name = format!("{}  ·  {}", p.title, p.source.label());
-                let resp = ui.add_sized([w, 24.0], slot_btn(&name, showing == Slot::Page(p.id), live, rgb(p.color)));
-                if resp.clicked() {
-                    clicked = Some(Slot::Page(p.id));
-                }
-                if ui.small_button("x").on_hover_text("Delete page").clicked() {
-                    delete = Some(p.id);
-                }
-            });
-        }
-        if let Some(id) = delete {
-            self.s.customs.retain(|p| p.id != id);
-            if self.edit_page == Some(id) {
-                self.edit_page = self.s.customs.first().map(|p| p.id);
-            }
-            if self.board_page == Some(id) {
-                self.board_page = self.s.customs.first().map(|p| p.id);
-                self.custom_dirty = true;
-            }
-            if self.preview == Slot::Page(id) {
-                self.preview = Slot::Mode(0);
-            }
-        }
-        if let Some(slot) = clicked {
-            self.show(slot);
-            self.tab = match slot {
-                Slot::Mode(MODE_CLOCK) => Tab::Clock,
-                Slot::Mode(MODE_SYSTEM) => Tab::System,
-                Slot::Mode(_) => Tab::Claude,
-                Slot::Page(_) => Tab::Custom,
-            };
-        }
-
-        ui.add_space(10.0);
-        ui.separator();
-        ui.heading("Rotation");
-        let before = self.s.app_rotate;
-        ui.checkbox(&mut self.s.app_rotate, "Rotate through ticked widgets and pages");
-        if self.s.app_rotate && !before {
-            self.last_rotate = Instant::now();
-            if self.board.as_ref().is_some_and(|b| b.auto_cycle) {
-                self.send("A|0".into());
-            }
-        }
-        ui.add(egui::Slider::new(&mut self.s.rotate_secs, 3..=120).text("sec each"));
-
-        let board_auto = self.board.as_ref().is_some_and(|b| b.auto_cycle);
-        let mut auto = board_auto;
-        ui.add_enabled_ui(self.board_ready(), |ui| {
-            ui.checkbox(&mut auto, "Board auto-cycle (built-ins, 8 s)")
-                .on_hover_text("Same as long-pressing the button on the board");
-        });
-        if auto != board_auto {
-            self.send(format!("A|{}", auto as u8));
-            if auto {
-                self.s.app_rotate = false;
-            }
-        }
-
-        ui.add_space(10.0);
-        ui.separator();
-        ui.heading("Screen");
-        ui.horizontal(|ui| {
-            ui.label("Orientation");
-            for r in 0..4u8 {
-                if ui.selectable_label(self.s.screen_rotation == r, format!("{}°", r as u32 * 90)).clicked() {
-                    self.s.screen_rotation = r;
-                    if self.board_ready() {
-                        self.send(format!("R|{r}"));
-                    }
-                }
-            }
-        });
-        if let Some(b) = self.board.as_ref().filter(|b| b.ready) {
-            if b.rotation != self.s.screen_rotation {
-                // Board was turned with its button: follow it
-                self.s.screen_rotation = b.rotation;
-            }
-        }
-    }
-
-    fn add_page(&mut self, mut page: CustomPage) -> u64 {
-        page.id = self.s.next_id.max(1);
-        self.s.next_id = page.id + 1;
-        let id = page.id;
-        self.s.customs.push(page);
-        self.edit_page = Some(id);
-        id
-    }
-
-    fn settings_panel(&mut self, ui: &mut egui::Ui) {
-        ui.add_space(6.0);
-        ui.horizontal(|ui| {
-            ui.selectable_value(&mut self.tab, Tab::Claude, "Claude");
-            ui.selectable_value(&mut self.tab, Tab::Clock, "Clock");
-            ui.selectable_value(&mut self.tab, Tab::System, "System");
-            ui.selectable_value(&mut self.tab, Tab::Custom, "Custom");
-            ui.selectable_value(&mut self.tab, Tab::App, "App");
-        });
-        ui.separator();
-
-        egui::ScrollArea::vertical().show(ui, |ui| match self.tab {
-            Tab::Claude => self.claude_settings(ui),
-            Tab::Clock => self.clock_settings(ui),
-            Tab::System => self.system_settings(ui),
-            Tab::Custom => self.custom_settings(ui),
-            Tab::App => self.app_settings(ui),
-        });
-    }
-
-    fn claude_settings(&mut self, ui: &mut egui::Ui) {
-        let (c, scanned) = {
-            let sh = self.shared.lock().unwrap();
-            (sh.claude.clone(), sh.claude_scanned)
-        };
-        ui.heading("Claude usage");
-        ui.label(RichText::new("Read from your local Claude Code logs.").weak());
-        ui.add_space(6.0);
-
-        egui::Grid::new("claude_stats").num_columns(2).spacing([16.0, 4.0]).show(ui, |ui| {
-            let stat = |ui: &mut egui::Ui, k: &str, v: String| {
-                ui.label(k);
-                ui.label(RichText::new(v).strong().monospace());
-                ui.end_row();
-            };
-            if !scanned {
-                stat(ui, "Status", "scanning...".into());
-            }
-            stat(ui, "5h block", human(c.block_tokens));
-            stat(ui, "Resets in", c.time_left());
-            stat(ui, "Today", human(c.today_tokens));
-            stat(ui, "Replies today", c.today_msgs.to_string());
-            stat(ui, "Log files", c.log_files.to_string());
-        });
-
-        ui.add_space(10.0);
-        ui.label("5h ring");
-        let mut use_limit = self.s.block_limit_m > 0.0;
-        ui.radio_value(&mut use_limit, false, "Time elapsed in the block");
-        ui.radio_value(&mut use_limit, true, "Tokens vs a budget");
-        if use_limit && self.s.block_limit_m <= 0.0 {
-            self.s.block_limit_m = 50.0;
-        } else if !use_limit {
-            self.s.block_limit_m = 0.0;
-        }
-        if use_limit {
-            ui.add(egui::Slider::new(&mut self.s.block_limit_m, 1.0..=500.0).logarithmic(true).suffix(" M tokens"));
-        }
-
-        ui.add_space(6.0);
-        ui.label("Daily goal (Today ring)");
-        ui.add(egui::Slider::new(&mut self.s.daily_goal_m, 0.5..=1000.0).logarithmic(true).suffix(" M tokens"));
-        ui.add_space(6.0);
-        ui.label(
-            RichText::new("Totals include cache reads. The 5h block is estimated from your logs, not Anthropic's official limit meter.")
-                .small()
-                .weak(),
-        );
-    }
-
-    fn clock_settings(&mut self, ui: &mut egui::Ui) {
-        ui.heading("Clock");
-        ui.checkbox(&mut self.s.clock_24h, "24-hour time");
-        ui.horizontal(|ui| {
-            ui.label("Accent color");
-            ui.color_edit_button_srgb(&mut self.s.clock_color);
-        });
-        ui.add_space(6.0);
-        ui.label("Bottom line");
-        ui.radio_value(&mut self.s.clock_extra, ClockExtra::Utc, "UTC time");
-        ui.radio_value(&mut self.s.clock_extra, ClockExtra::Week, "Week and day of year");
-        ui.radio_value(&mut self.s.clock_extra, ClockExtra::Text, "My text");
-        ui.radio_value(&mut self.s.clock_extra, ClockExtra::Nothing, "Nothing");
-        if self.s.clock_extra == ClockExtra::Text {
-            ui.add(egui::TextEdit::singleline(&mut self.s.clock_text).char_limit(22).hint_text("up to 22 characters"));
-        }
-    }
-
-    fn system_settings(&mut self, ui: &mut egui::Ui) {
-        let s = self.shared.lock().unwrap().sys.clone();
-        ui.heading("System");
-        ui.label(RichText::new("Live stats from this PC, sent every second.").weak());
-        ui.horizontal(|ui| {
-            ui.label("Title color");
-            ui.color_edit_button_srgb(&mut self.s.sys_color);
-        });
-        ui.add_space(6.0);
-        egui::Grid::new("sys_stats").num_columns(2).spacing([16.0, 4.0]).show(ui, |ui| {
-            let mut stat = |k: &str, v: String| {
-                ui.label(k);
-                ui.label(RichText::new(v).strong().monospace());
-                ui.end_row();
-            };
-            stat("CPU", format!("{:.0}%", s.cpu));
-            stat("RAM", format!("{}% ({:.1} / {:.1} GB)", s.ram_pct(), s.ram_used as f64 / 1e9, s.ram_total as f64 / 1e9));
-            stat("Network", format!("down {}/s  up {}/s", human(s.net_rx), human(s.net_tx)));
-            stat("Disk C:", format!("{}% used", s.disk_pct));
-            stat("Uptime", format!("{}d {}h {}m", s.uptime / 86400, s.uptime / 3600 % 24, s.uptime / 60 % 60));
-        });
-    }
-
-    fn custom_settings(&mut self, ui: &mut egui::Ui) {
-        ui.heading("Custom pages");
-        ui.label(RichText::new("Make as many as you like; they share the board's CUSTOM slot.").weak());
-        ui.add_space(6.0);
-
-        ui.horizontal(|ui| {
-            let current = self.edit_page.and_then(|id| self.page(id)).map(|p| p.title.clone());
-            egui::ComboBox::from_id_salt("edit_page")
-                .selected_text(current.unwrap_or("Pick a page".into()))
-                .width(170.0)
-                .show_ui(ui, |ui| {
-                    for p in &self.s.customs {
-                        ui.selectable_value(&mut self.edit_page, Some(p.id), &p.title);
-                    }
-                });
-            if let Some(page) = template_menu(ui, "+ Add page") {
-                let id = self.add_page(page);
-                self.show(Slot::Page(id));
-            }
-        });
-        ui.separator();
-
-        let Some(idx) = self.edit_page.and_then(|id| self.s.customs.iter().position(|p| p.id == id)) else {
-            ui.label("Pick or add a page.");
-            return;
-        };
-
-        let cmd_out = self.shared.lock().unwrap().cmds.get(&self.s.customs[idx].id).cloned();
-        let before = serde_json::to_string(&self.s.customs[idx]).unwrap_or_default();
-        let now = chrono::Local::now().timestamp();
-        let p = &mut self.s.customs[idx];
-
-        egui::Grid::new("custom").num_columns(2).spacing([10.0, 6.0]).show(ui, |ui| {
-            ui.label("Title");
-            ui.add(egui::TextEdit::singleline(&mut p.title).char_limit(11));
-            ui.end_row();
-            ui.label("Subtitle");
-            ui.add(egui::TextEdit::singleline(&mut p.subtitle).char_limit(18));
-            ui.end_row();
-            ui.label("Bottom line");
-            ui.add(egui::TextEdit::singleline(&mut p.line).char_limit(22));
-            ui.end_row();
-            ui.label("Color");
-            ui.color_edit_button_srgb(&mut p.color);
-            ui.end_row();
-            ui.label("Source");
-            egui::ComboBox::from_id_salt("source").selected_text(p.source.label()).show_ui(ui, |ui| {
-                for s in Source::ALL {
-                    ui.selectable_value(&mut p.source, s, s.label());
-                }
-            });
-            ui.end_row();
-        });
-        ui.add_space(6.0);
-
-        match p.source {
-            Source::Static => {
-                egui::Grid::new("static").num_columns(2).spacing([10.0, 6.0]).show(ui, |ui| {
-                    ui.label("Value");
-                    ui.add(egui::TextEdit::singleline(&mut p.value).char_limit(8));
-                    ui.end_row();
-                    ui.label("Ring %");
-                    ui.add(egui::Slider::new(&mut p.pct, 0..=100));
-                    ui.end_row();
-                });
-            }
-            Source::Command => {
-                ui.add(
-                    egui::TextEdit::singleline(&mut p.command)
-                        .hint_text("any command, e.g. curl -s wttr.in/?format=%t")
-                        .desired_width(f32::INFINITY),
-                );
-                ui.add(egui::Slider::new(&mut p.command_secs, 1..=3600).logarithmic(true).text("sec between runs"));
-                ui.label(
-                    RichText::new("First output line: value|ring%|subtitle|bottom line. Only value is required; a bare number 0-100 also fills the ring.")
-                        .small()
-                        .weak(),
-                );
-                match &cmd_out {
-                    Some(o) if o.error.is_some() => {
-                        ui.colored_label(ALERT, format!("Command failed: {}", o.error.clone().unwrap_or_default()));
-                    }
-                    Some(o) => {
-                        ui.label(RichText::new(format!("Last output: {}", o.value)).monospace());
-                    }
-                    None if !p.command.trim().is_empty() => {
-                        ui.label(RichText::new("Running...").weak());
-                    }
-                    None => {}
-                }
-            }
-            Source::Countdown => {
-                ui.label("Count down to (YYYY-MM-DD HH:MM)");
-                let resp = ui.add(egui::TextEdit::singleline(&mut p.countdown_to).hint_text("2026-12-25 00:00"));
-                if resp.changed() {
-                    // Ring measures progress from when the date was set
-                    p.countdown_from = now;
-                }
-                if custom::parse_when(&p.countdown_to).is_none() {
-                    ui.colored_label(WARN, "Not a valid date yet");
-                }
-                ui.label(RichText::new("The ring fills up as the date gets closer.").small().weak());
-            }
-            Source::Pomodoro => {
-                ui.add(egui::Slider::new(&mut p.pomo_minutes, 1..=120).text("minutes"));
-                ui.horizontal(|ui| {
-                    let running = p.pomo_end.is_some();
-                    if running {
-                        if ui.button("Pause").clicked() {
-                            p.pomo_paused = Some(p.pomo_left(now).max(0));
-                            p.pomo_end = None;
-                        }
-                    } else {
-                        let label = if p.pomo_paused.is_some() { "Resume" } else { "Start" };
-                        if ui.button(label).clicked() {
-                            p.pomo_end = Some(now + p.pomo_left(now));
-                            p.pomo_paused = None;
-                        }
-                    }
-                    if ui.button("Reset").clicked() {
-                        p.pomo_end = None;
-                        p.pomo_paused = None;
-                    }
-                });
-                ui.label(RichText::new("The ring drains as time runs out.").small().weak());
-            }
-        }
-
-        let page_id = p.id;
-        let after = serde_json::to_string(&self.s.customs[idx]).unwrap_or_default();
-        if before != after && self.board_page == Some(page_id) {
-            self.custom_dirty = true;
-        }
-
-        ui.add_space(8.0);
-        ui.horizontal(|ui| {
-            if ui.button("Show on screen").clicked() {
-                self.show(Slot::Page(page_id));
-            }
-        });
-    }
-
-    fn app_settings(&mut self, ui: &mut egui::Ui) {
-        ui.heading("App");
-        let mut autostart = self.s.start_with_windows;
-        if ui.checkbox(&mut autostart, "Start with Windows").changed() {
-            match set_autostart(autostart) {
-                Ok(()) => {
-                    self.s.start_with_windows = autostart;
-                    self.app_error = None;
-                }
-                Err(e) => self.app_error = Some(e),
-            }
-        }
-        if let Some(e) = &self.app_error {
-            ui.colored_label(ALERT, e);
-        }
-        ui.add_space(6.0);
-        ui.label(RichText::new("Settings are saved automatically.").small().weak());
-        ui.add_space(10.0);
-        if ui.button("Reset all settings").clicked() {
-            let port = std::mem::take(&mut self.s.port);
-            self.s = Settings { port, start_with_windows: self.s.start_with_windows, ..Settings::default() };
-            self.edit_page = self.s.customs.first().map(|p| p.id);
-            self.board_page = None;
-            self.preview = Slot::Mode(0);
-        }
-    }
-
-    fn log_panel(&mut self, ui: &mut egui::Ui) {
-        ui.horizontal(|ui| {
-            ui.label(RichText::new("Serial log").strong());
-            ui.label(RichText::new("-> sent   <- from board").small().weak());
-            if ui.small_button("Clear").clicked() {
-                self.log.clear();
-            }
-        });
-        egui::ScrollArea::vertical().stick_to_bottom(true).auto_shrink([false, false]).show(ui, |ui| {
-            for (out, line) in &self.log {
-                let (arrow, col) = if *out { ("->", Color32::GRAY) } else { ("<-", CYAN) };
-                ui.label(RichText::new(format!("{arrow} {line}")).monospace().small().color(col));
-            }
-        });
-    }
-
-    /// Round preview of what the screen is showing
-    fn preview(&mut self, ui: &mut egui::Ui) {
-        let slot = self.showing();
-        let (view, name) = {
-            let sh = self.shared.lock().unwrap();
-            let (mode, page, name) = match slot {
-                Slot::Mode(m) => (m, self.s.customs.first(), MODE_NAMES[m].to_string()),
-                Slot::Page(id) => {
-                    let p = self.page(id);
-                    (MODE_CUSTOM, p, p.map(|p| p.title.clone()).unwrap_or_default())
-                }
-            };
-            let cmd = page.and_then(|p| sh.cmds.get(&p.id));
-            let d = Data { claude: &sh.claude, sys: &sh.sys, page, cmd, s: &self.s };
-            (d.view(mode), name)
-        };
-
-        ui.vertical_centered(|ui| {
-            let tag = if self.board_ready() { "On screen" } else { "Preview" };
-            ui.label(RichText::new(format!("{tag}: {name}")).strong());
-        });
-        let avail = ui.available_size();
-        let size = avail.x.min(avail.y - 10.0).clamp(160.0, 520.0);
-        let (rect, _) = ui.allocate_exact_size(Vec2::new(avail.x, size), egui::Sense::hover());
-        let k = size / 240.0;
-        let origin = Pos2::new(rect.center().x - size / 2.0, rect.top());
-        let at = |x: f32, y: f32| Pos2::new(origin.x + x * k, origin.y + y * k);
-        let p = ui.painter();
-
-        let center = at(120.0, 120.0);
-        p.circle_filled(center, 121.0 * k, Color32::from_gray(40));
-        p.circle_filled(center, 120.0 * k, Color32::BLACK);
-        p.circle_stroke(center, 118.0 * k, Stroke::new(1.0, TRACK));
-
-        // 270° ring opening at the bottom, like the firmware's drawArc
-        let arc = |from: f32, to: f32| -> Vec<Pos2> {
-            let steps = ((to - from) / 2.0).ceil().max(1.0) as usize;
-            (0..=steps)
-                .map(|i| {
-                    let deg = 135.0 + from + (to - from) * i as f32 / steps as f32;
-                    let r = deg.to_radians();
-                    at(120.0 + r.cos() * 104.0, 120.0 + r.sin() * 104.0)
-                })
-                .collect()
-        };
-        p.add(egui::Shape::line(arc(0.0, 270.0), Stroke::new(12.0 * k, TRACK)));
-        if view.pct > 0 {
-            p.add(egui::Shape::line(arc(0.0, 270.0 * view.pct as f32 / 100.0), Stroke::new(12.0 * k, view.ring)));
-        }
-
-        for t in &view.texts {
-            // Adafruit GFX font: 6x8 px per char at size 1
-            let font = FontId::monospace(8.0 * t.size as f32 * k);
-            p.text(at(120.0, t.y), egui::Align2::CENTER_TOP, &t.text, font, t.color);
-        }
-
-        let tag = match &self.board {
-            Some(b) if b.ready => format!("LIVE [{}/7]", b.mode + 1),
-            _ => "PREVIEW".into(),
-        };
-        p.text(at(120.0, 200.0), egui::Align2::CENTER_TOP, tag, FontId::monospace(8.0 * k), DIM);
-    }
-}
-
-fn slot_btn(label: &str, on_screen: bool, live: bool, accent: Color32) -> egui::Button<'static> {
-    let text = if on_screen && live { format!("> {label} <") } else { label.to_string() };
-    let mut rt = RichText::new(text).strong();
-    if accent != Color32::TRANSPARENT {
-        rt = rt.color(accent);
-    }
-    egui::Button::selectable(on_screen, rt)
-}
-
-fn slot_button(ui: &mut egui::Ui, label: &str, on_screen: bool, live: bool) -> egui::Response {
-    ui.add_sized([ui.available_width(), 24.0], slot_btn(label, on_screen, live, Color32::TRANSPARENT))
-}
-
-/// "+ Add" dropdown of page templates; returns the picked one
-fn template_menu(ui: &mut egui::Ui, label: &str) -> Option<CustomPage> {
-    let mut picked = None;
-    egui::ComboBox::from_id_salt(("templates", label)).selected_text(label).width(110.0).show_ui(ui, |ui| {
-        for (name, page) in custom::templates() {
-            if ui.selectable_label(false, name).clicked() {
-                picked = Some(page);
-            }
-        }
-    });
-    picked
 }
 
 #[cfg(test)]
@@ -1156,5 +615,55 @@ mod tests {
         assert_eq!(o.value, "\"a");
         let o = super::run_command("powershell -NoProfile -Command \"Write-Output '42|7'\"");
         assert_eq!((o.value.as_str(), o.pct), ("42", Some(7)));
+    }
+
+    /// Serve one HTTP reply on a free local port; returns "127.0.0.1:port"
+    fn fake_printer(status: &'static str, body: &'static str) -> String {
+        use std::io::{Read, Write};
+        let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = l.local_addr().unwrap().to_string();
+        std::thread::spawn(move || {
+            if let Ok((mut s, _)) = l.accept() {
+                let mut buf = [0u8; 2048];
+                let _ = s.read(&mut buf);
+                let reply = format!(
+                    "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                let _ = s.write_all(reply.as_bytes());
+            }
+        });
+        addr
+    }
+
+    fn run_printer(template: &str, addr: &str) -> super::CmdOutput {
+        let (_, page) = crate::custom::templates().into_iter().find(|(n, _)| *n == template).unwrap();
+        super::run_command(&page.command.replace("PRINTER_IP", addr))
+    }
+
+    #[test]
+    fn printer_templates() {
+        let oct = r#"{"state":"Printing","job":{"file":{"display":"orbdash_shell.gcode"}},"progress":{"completion":62.4,"printTimeLeft":4830}}"#;
+        let o = run_printer("3D printer (OctoPrint)", &fake_printer("200 OK", oct));
+        assert_eq!(o.error, None);
+        assert_eq!((o.value.as_str(), o.pct, o.line.as_deref()), ("62%", Some(62), Some("1h20m left")));
+
+        let idle = r#"{"state":"Operational","job":{"file":{"display":"case.gcode"}},"progress":{"completion":null,"printTimeLeft":null}}"#;
+        let o = run_printer("3D printer (OctoPrint)", &fake_printer("200 OK", idle));
+        assert_eq!((o.value.as_str(), o.line.as_deref()), ("READY", Some("case.gcode")));
+
+        let klip = r#"{"result":{"status":{"print_stats":{"state":"printing","print_duration":3600,"filename":"a.gcode"},"display_status":{"progress":0.5}}}}"#;
+        let o = run_printer("3D printer (Klipper)", &fake_printer("200 OK", klip));
+        assert_eq!((o.value.as_str(), o.pct, o.line.as_deref()), ("50%", Some(50), Some("1h00m left")));
+
+        let um = r#"{"state":"printing","progress":0.25,"time_elapsed":1200,"time_total":4800,"name":"shell"}"#;
+        let o = run_printer("3D printer (UltiMaker)", &fake_printer("200 OK", um));
+        assert_eq!((o.value.as_str(), o.pct, o.line.as_deref()), ("25%", Some(25), Some("1h00m left")));
+        let o = run_printer("3D printer (UltiMaker)", &fake_printer("404 Not Found", "{}"));
+        assert_eq!(o.value, "READY");
+
+        // Nothing listening: a clear OFF, not a command error
+        let o = run_printer("3D printer (Klipper)", "127.0.0.1:9");
+        assert_eq!((o.error, o.value.as_str()), (None, "OFF"));
     }
 }
