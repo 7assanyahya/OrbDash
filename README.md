@@ -49,15 +49,11 @@ Custom slot. Each page gets its content from one of:
 - **Command output**: any shell command, run on an interval. The first line
   of output is `value|ring%|subtitle|bottom line` (only `value` is required;
   a bare number from 0 to 100 also fills the ring). Templates included for
-  weather (wttr.in), laptop battery, and 3D printers: print progress on the
-  ring and time left below.
-  - **Biqu B1 / Marlin USB**: for printers that print from SD card and are
-    plugged into the PC by USB. It asks the printer with `M27`/`M31` and finds
-    its port by USB ID (BTT LPC176x and STM32 boards), so it leaves the
-    Arduino alone. Nothing else may have the printer's port open.
-  - **OctoPrint, Klipper (Moonraker), UltiMaker**: over the network. Put your
-    printer's address in place of `PRINTER_IP` (and, for OctoPrint, an API
-    key from its settings in place of `YOUR_API_KEY`).
+  weather (wttr.in), laptop battery, and 3D printers on the network
+  (OctoPrint, Klipper via Moonraker, UltiMaker): print progress on the ring
+  and time left below. Put your printer's address in place of `PRINTER_IP`
+  (and, for OctoPrint, an API key from its settings in place of
+  `YOUR_API_KEY`).
 - **Countdown to a date**: the ring fills as the date gets closer.
 - **Pomodoro timer**: start, pause and reset it from the app.
 
@@ -67,6 +63,17 @@ Custom slot. Each page gets its content from one of:
 - 1.28" 240x240 round TFT, GC9A01 driver
 - Optional: a push button, an LED and a 220 Ω resistor
 - USB cable to the PC (powers the board and carries the data)
+
+<img src="docs/display_module.jpg" alt="1.28 inch round GC9A01 display module with a 7-pin header tab" width="320" align="right">
+
+**The display used in this project** is the 1.28" round GC9A01 module
+(240 × 240, DIYmore and similar sellers): a round board with a tab carrying
+a 7-pin header, `RST CS DC SDA SCL GND VCC`. The case is made for this
+shape, tab included. Other round GC9A01 boards work too, but check their
+pin order and size (see [`case/`](case)).
+
+<sub>Module photo: DIYmore product image.</sub>
+<br clear="right">
 
 ![OrbDash wiring diagram](docs/wiring.svg)
 

@@ -20,7 +20,10 @@ Outside size: about **64 × 94 × 76 mm** (width × depth × height).
 
 ## Measure your display first
 
-Round GC9A01 boards differ by a millimetre or two between sellers. Measure
+<img src="../docs/display_module.jpg" alt="The round GC9A01 display module this case is made for" width="260" align="right">
+
+The case is made for the module on the right: a round board plus a tab with
+the 7-pin header. Round GC9A01 boards differ by a millimetre or two between sellers. Measure
 yours and, if it differs, change these values at the top of
 `orbdash_case.scad`, or in OpenSCAD's Customizer (Window → Customizer):
 
