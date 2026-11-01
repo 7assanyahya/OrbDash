@@ -30,7 +30,18 @@ yours and, if it differs, change these values at the top of
 | `glass_d` | 35.6 | Diameter of the glass panel on the front |
 | `glass_t` | 2.0 | Thickness of the glass panel |
 | `view_d` | 32.6 | Diameter of the visible screen area |
-| `header_gap` | 26 | Width the pin header and plugs need at the bottom |
+| `tab_w` | 26.0 | Width of the rectangular tab that carries the 7-pin header |
+| `tab_reach` | 27.0 | From the centre of the round board to the far edge of the tab |
+| `joint_h` | 2.0 | How far the header's solder joints stick out on the screen side |
+
+The board is round **plus a tab** with the pin header. The tab goes through a
+slot in the ring behind the screen and points down the front face, so the
+picture is upright at rotation 0°. The slot also leaves room in front of the
+tab for the solder joints and the display's folded ribbon, so the board sits
+flat.
+
+To check a fit before printing, set `part = "front"`: it shows just the front
+of the shell from inside, with the display in place.
 
 Then export new STLs: pick a `part` (`shell`, `plate` or `retainer`), press
 F6, then File → Export → STL. From the command line:

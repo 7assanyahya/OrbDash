@@ -8,6 +8,7 @@
 //   plate     - base plate with the Uno standoffs and rubber-feet recesses.
 //   retainer  - C-ring that presses in behind the display to hold it.
 //   assembly  - everything together with dummy Uno/display, for checking.
+//   front     - the front of the shell seen from inside, with the display.
 //
 // MEASURE YOUR DISPLAY MODULE and adjust the "Display" values below:
 // round GC9A01 boards differ by a millimetre or two.
@@ -26,7 +27,12 @@ pcb_t    = 1.6;   // PCB thickness
 glass_d  = 35.6;  // diameter of the glass/panel on the front of the PCB
 glass_t  = 2.0;   // thickness of the glass/panel
 view_d   = 32.6;  // visible screen area (window size)
-header_gap = 26;  // gap in the retainer ring for the pin header and wires
+// The PCB is round plus a rectangular tab that carries the 7-pin header.
+// The tab points down the front face (the bottom of the picture at rotation 0).
+tab_w     = 26.0; // width of the header tab, measured across it
+tab_reach = 27.0; // from the centre of the round PCB to the far edge of the tab
+joint_h   = 2.0;  // how far the header's solder joints stick out on the screen side
+header_gap = tab_w;  // gap in the retainer ring for the tab and header
 
 /* [Case] */
 tilt     = 20;    // front face lean back from vertical, degrees
@@ -34,7 +40,8 @@ H        = 76;    // total height
 wall     = 2.4;
 plate_t  = 2.4;
 corner_r = 5;
-disp_z   = 48;    // height of the display center on the front face
+disp_z   = 52;    // height of the display center: high enough that the header
+                  // plugs on the tab clear the Uno's chip
 fit      = 0.3;   // clearance for press fits
 
 /* [Top panel] */
@@ -122,6 +129,13 @@ module shell() {
             // glass pocket, then PCB + retainer pocket
             translate([0, 0, -face_t - glass_t - 0.01]) cylinder(r = glass_d / 2 + fit, h = glass_t + 0.02);
             translate([0, 0, -face_t - boss_depth - 1]) cylinder(r = pocket_r, h = boss_depth - glass_t + 1);
+            // slot for the header tab, cut through the boss so the board lies
+            // flat. It reaches forward of the PCB by joint_h for the solder
+            // joints and the bent display ribbon, but always leaves >= 1.2 mm
+            // of front wall.
+            tab_top = min(-face_t - glass_t + joint_h, -1.2);
+            translate([-tab_w / 2 - fit, -tab_reach - fit, -face_t - boss_depth - 1])
+                cube([tab_w + 2 * fit, tab_reach + fit, tab_top + face_t + boss_depth + 1]);
         }
         // pilot holes for M3 screws from below
         for (p = posts) translate([p[0], p[1], plate_t - 1]) cylinder(d = 2.6, h = 13);
@@ -198,10 +212,14 @@ module dummy_uno() {
 
 module dummy_display() {
     on_face() {
-        color("navy") translate([0, 0, -face_t - glass_t - pcb_t]) cylinder(d = pcb_d, h = pcb_t);
+        color("navy") translate([0, 0, -face_t - glass_t - pcb_t]) {
+            cylinder(d = pcb_d, h = pcb_t);
+            translate([-tab_w / 2, -tab_reach, 0]) cube([tab_w, tab_reach, pcb_t]);  // header tab
+        }
         color("black") translate([0, 0, -face_t - glass_t]) cylinder(d = glass_d, h = glass_t);
-        // pin header with dupont plugs pointing back
-        color("gold") translate([-9, -pcb_d / 2 + 2, -face_t - glass_t - pcb_t - 20]) cube([18, 2.5, 20]);
+        // solder joints on the screen side, header and dupont plugs pointing back
+        color("silver") translate([-9, -tab_reach + 2, -face_t - glass_t]) cube([18, 2.5, joint_h - 0.2]);
+        color("gold") translate([-9, -tab_reach + 2, -face_t - glass_t - pcb_t - 20]) cube([18, 2.5, 20]);
     }
 }
 
@@ -225,6 +243,13 @@ if (part == "shell") {
             translate([0, 0, -1]) linear_extrude(3) polygon([[0, 0], [-30, -30], [30, -30]]);
         }
     }
+} else if (part == "front") {
+    // just the front of the shell with the display in place, to check the fit
+    color("darkslategray") intersection() {
+        shell();
+        translate([-W, -10, -1]) cube([2 * W, 30, H + 10]);
+    }
+    dummy_display();
 } else if (part == "assembly") {
     color("whitesmoke") plate();
     dummy_uno();

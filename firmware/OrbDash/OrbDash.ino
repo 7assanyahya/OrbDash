@@ -1,5 +1,5 @@
 /*
- * OrbDash - round desk dashboard on a 1.28" GC9A01 TFT (Arduino Uno/Nano)
+ * OrbDash 1.1.0 - round desk dashboard on a 1.28" GC9A01 TFT (Arduino Uno/Nano)
  * Claude usage, clock, PC stats and custom widgets, fed by the OrbDash app
  *
  * Pinout Wiring Guide:
@@ -48,7 +48,7 @@
  *     G|<cpu %>|<gpu %>|<ram %>                                     GT gauge (gpu "-" = none)
  *     W|<mode 0-7>   show a mode      R|<0-3>  set rotation      A|<0/1>  auto-cycle
  *   board -> PC
- *     ORB|READY|<modes>    MODE|<n>   ROT|<n>   AUTO|<0/1>
+ *     ORB|READY|<modes>|<version>    MODE|<n>   ROT|<n>   AUTO|<0/1>
  *   Fields must not be empty (send a space instead).
  *
  * Libraries Required:
@@ -59,6 +59,8 @@
 #include <SPI.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_GC9A01A.h>
+
+#define ORBDASH_VERSION "1.1.0"
 
 #define TFT_RST      8
 #define TFT_DC       9
@@ -244,7 +246,8 @@ void setup() {
   wasLinked = isLinked();
 
   Serial.print(F("ORB|READY|"));
-  Serial.println(NUM_MODES);
+  Serial.print(NUM_MODES);
+  Serial.println(F("|" ORBDASH_VERSION));
   report(F("MODE"), currentMode);
   report(F("ROT"), screenRotation);
   report(F("AUTO"), autoCycle);

@@ -9,6 +9,7 @@ use eframe::egui::{Align, Align2, CornerRadius, CursorIcon, Frame, Layout, Margi
 // Theme: the brand palette (brand/README.md)
 // ---------------------------------------------------------------------------
 
+const VERSION: &str = env!("CARGO_PKG_VERSION");
 const EMBER: Color32 = Color32::from_rgb(255, 122, 69);
 const BG: Color32 = Color32::from_rgb(13, 14, 18);
 const SIDEBAR: Color32 = Color32::from_rgb(18, 19, 24);
@@ -255,6 +256,7 @@ impl App {
             ui.add_space(-ui.spacing().item_spacing.x);
             ui.label(RichText::new("Dash").size(20.0).strong().color(ACCENT));
         });
+        ui.label(RichText::new(format!("v{VERSION}")).size(11.5).color(TEXT_LO));
         ui.add_space(18.0);
 
         for (tab, icon, label) in PAGES {
@@ -283,7 +285,11 @@ impl App {
                         ui.label(RichText::new(state).strong().color(TEXT_HI));
                     });
                     let port = if self.s.port.is_empty() { "No port picked".to_string() } else { self.s.port.clone() };
-                    label_lo(ui, &port);
+                    let fw = match self.board.as_ref().filter(|b| b.ready) {
+                        Some(b) => format!("  ·  firmware {}", b.firmware.as_deref().unwrap_or("before 1.1")),
+                        None => String::new(),
+                    };
+                    label_lo(ui, &format!("{port}{fw}"));
                     ui.add_space(2.0);
                     if self.link.is_some() {
                         if ui.add_sized([ui.available_width(), 28.0], egui::Button::new("Disconnect")).clicked() {
@@ -884,7 +890,7 @@ impl App {
                 label_lo(ui, &self.status);
             });
             card(&mut cols[1], |ui| {
-                card_title(ui, "App", "");
+                card_title(ui, "App", &format!("OrbDash {VERSION}"));
                 let mut autostart = self.s.start_with_windows;
                 if toggle_row(ui, "Start with Windows", "Open OrbDash when you sign in", &mut autostart) {
                     match set_autostart(autostart) {

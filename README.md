@@ -1,6 +1,6 @@
 <p align="center"><img src="brand/png/orbdash-lockup-transparent.png" alt="OrbDash" width="420"></p>
 
-<p align="center"><b>Everything you watch, at a glance.</b></p>
+<p align="center"><b>Everything you watch, at a glance.</b><br>Version 1.1.0 · <a href="CHANGELOG.md">What's new</a></p>
 
 # OrbDash
 
@@ -179,7 +179,7 @@ Colors are RGB565 in hex, for example `DBAA` for Claude coral.
 Board to PC:
 
 ```text
-ORB|READY|<widgets>     finished booting
+ORB|READY|<widgets>|<version>   finished booting (version since 1.1.0)
 MODE|<n>                widget changed (also from the button)
 ROT|<n>                 rotation changed
 AUTO|<0/1>              auto-cycle changed

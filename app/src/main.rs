@@ -222,6 +222,8 @@ struct Board {
     mode: usize,
     rotation: u8,
     auto_cycle: bool,
+    /// Firmware version from ORB|READY (None: firmware before 1.1.0)
+    firmware: Option<String>,
 }
 
 struct App {
@@ -341,6 +343,7 @@ impl App {
                     mode: 0,
                     rotation: 0,
                     auto_cycle: false,
+                    firmware: None,
                 });
                 self.board_page = None;
             }
@@ -374,6 +377,7 @@ impl App {
                 ("ORB" | "RTFT", _) => {
                     just_ready = !b.ready;
                     b.ready = true;
+                    b.firmware = line.split('|').nth(3).map(|v| v.trim().to_string()).filter(|v| !v.is_empty());
                 }
                 ("MODE", Some(m)) => {
                     b.mode = m.min(MODE_NAMES.len() - 1);
