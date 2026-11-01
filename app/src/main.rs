@@ -1,6 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-//! RoundTFT control app: drives the round GC9A01 display on the Arduino.
+//! OrbDash: drives the round GC9A01 display on the Arduino.
 //! Pick which widget the screen shows, rotate through a playlist, turn the
 //! screen, and feed every widget its data: Claude usage, clock, PC stats,
 //! and any number of custom pages (text, command output, countdown, pomodoro).
@@ -27,15 +27,31 @@ const BOOT_TIMEOUT: Duration = Duration::from_secs(9);
 /// Number of built-in widgets before the board's CUSTOM slot
 const BUILTINS: usize = MODE_CUSTOM;
 
+const APP_NAME: &str = "OrbDash";
+/// Name the app had before; its saved settings are carried over once
+const OLD_APP_NAME: &str = "RoundTFT Control";
+
+fn migrate_settings() {
+    let (Some(new), Some(old)) = (eframe::storage_dir(APP_NAME), eframe::storage_dir(OLD_APP_NAME)) else {
+        return;
+    };
+    let (new_file, old_file) = (new.join("app.ron"), old.join("app.ron"));
+    if !new_file.exists() && old_file.exists() {
+        let _ = std::fs::create_dir_all(&new);
+        let _ = std::fs::copy(old_file, new_file);
+    }
+}
+
 fn main() -> eframe::Result {
+    migrate_settings();
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_title("RoundTFT Control")
+            .with_title(APP_NAME)
             .with_inner_size([1100.0, 700.0])
             .with_min_inner_size([880.0, 560.0]),
         ..Default::default()
     };
-    eframe::run_native("RoundTFT Control", options, Box::new(|cc| Ok(Box::new(App::new(cc)))))
+    eframe::run_native(APP_NAME, options, Box::new(|cc| Ok(Box::new(App::new(cc)))))
 }
 
 // ---------------------------------------------------------------------------
@@ -139,21 +155,28 @@ fn run_command(command: &str) -> CmdOutput {
 
 const RUN_KEY: &str = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run";
 
-fn set_autostart(enable: bool) -> Result<(), String> {
-    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+fn reg() -> std::process::Command {
     let mut cmd = std::process::Command::new("reg");
-    if enable {
-        cmd.args(["add", RUN_KEY, "/v", "RoundTFT", "/t", "REG_SZ", "/d"])
-            .arg(format!("\"{}\"", exe.display()))
-            .arg("/f");
-    } else {
-        cmd.args(["delete", RUN_KEY, "/v", "RoundTFT", "/f"]);
-    }
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
-        cmd.creation_flags(0x0800_0000);
+        cmd.creation_flags(0x0800_0000); // no console flashing
     }
+    cmd
+}
+
+fn set_autostart(enable: bool) -> Result<(), String> {
+    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    let mut cmd = reg();
+    if enable {
+        cmd.args(["add", RUN_KEY, "/v", APP_NAME, "/t", "REG_SZ", "/d"])
+            .arg(format!("\"{}\"", exe.display()))
+            .arg("/f");
+    } else {
+        cmd.args(["delete", RUN_KEY, "/v", APP_NAME, "/f"]);
+    }
+    // Drop the entry from before the rename, which points at the old exe
+    let _ = reg().args(["delete", RUN_KEY, "/v", "RoundTFT", "/f"]).output();
     let out = cmd.output().map_err(|e| e.to_string())?;
     // Deleting a value that isn't there is fine
     if out.status.success() || !enable { Ok(()) } else { Err(String::from_utf8_lossy(&out.stderr).trim().to_string()) }
@@ -330,7 +353,8 @@ impl App {
         let mut need_page = false;
         if let Some(b) = &mut self.board {
             match (key, val) {
-                ("RTFT", _) => {
+                // RTFT: firmware from before the rename
+                ("ORB" | "RTFT", _) => {
                     just_ready = !b.ready;
                     b.ready = true;
                 }
@@ -567,7 +591,7 @@ impl App {
     fn top_bar(&mut self, ui: &mut egui::Ui) {
         ui.add_space(4.0);
         ui.horizontal(|ui| {
-            ui.label(RichText::new("RoundTFT").strong().size(18.0).color(CLAUDE));
+            ui.label(RichText::new("OrbDash").strong().size(18.0).color(CLAUDE));
             ui.separator();
 
             let connected = self.link.is_some();

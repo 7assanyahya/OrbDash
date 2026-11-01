@@ -2378,6 +2378,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "orbdash"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "eframe",
+ "serde",
+ "serde_json",
+ "serialport",
+ "sysinfo",
+]
+
+[[package]]
 name = "ordered-float"
 version = "5.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2761,18 +2773,6 @@ dependencies = [
  "serde_derive",
  "typeid",
  "unicode-ident",
-]
-
-[[package]]
-name = "roundtft"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "eframe",
- "serde",
- "serde_json",
- "serialport",
- "sysinfo",
 ]
 
 [[package]]

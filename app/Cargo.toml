@@ -1,5 +1,5 @@
 [package]
-name = "roundtft"
+name = "orbdash"
 version = "0.1.0"
 edition = "2024"
 description = "Desktop app that controls a round GC9A01 display on an Arduino: Claude usage, clock, PC stats and custom widgets"

@@ -1,7 +1,7 @@
 """
-Claude usage -> RoundTFT bridge.
+Claude usage -> OrbDash bridge.
 
-The Arduino Uno/Nano runs the RoundTFT display. This script runs on the PC,
+The Arduino Uno/Nano runs the OrbDash display. This script runs on the PC,
 reads local Claude Code session logs, and streams real-time usage metrics
 to the Arduino over serial.
 
@@ -144,7 +144,7 @@ def main():
         print(f"Connected to {port}; waiting for the board to reset...")
         time.sleep(2.5)
 
-    print("Claude usage bridge running. Streaming metrics to RoundTFT...")
+    print("Claude usage bridge running. Streaming metrics to OrbDash...")
     while True:
         line = summarize(read_entries(), limit)
         print(time.strftime("%H:%M:%S"), line)
