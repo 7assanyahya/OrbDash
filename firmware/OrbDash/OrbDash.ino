@@ -717,7 +717,12 @@ void printCentered(const char *s, int y, byte size, uint16_t color) {
   tft.setTextSize(size);
   tft.setTextColor(color, COLOR_BG);
   tft.setCursor(CX - w / 2, y);
-  tft.print(s);
+  // One character at a time: a big-font string takes ~10 ms, long enough
+  // for an incoming line to overflow the 64-byte hardware RX buffer
+  for (const char *p = s; *p; p++) {
+    tft.print(*p);
+    pumpSerial();
+  }
 }
 
 // Text in a band `bandW` px wide. Padded and overwritten in place (no clear),
