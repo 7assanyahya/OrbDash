@@ -27,7 +27,7 @@ desktop.ini
 /social/
 
 # Brand kit build files (the exports themselves are committed)
-/brand/
+/brand/src/
 
 # Edge profiles left by the diagram and brand scripts
 .edge/
