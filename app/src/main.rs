@@ -237,14 +237,6 @@ impl Board {
     fn screens(&self) -> usize {
         self.modes.len().max(1)
     }
-
-    /// "OrbDash Pro", "OrbDash Mini", or "OrbDash" for the Uno
-    fn name(&self) -> String {
-        match self.device.as_deref() {
-            Some(d) => format!("OrbDash {}{}", &d[..1], d[1..].to_lowercase()),
-            None => "OrbDash".into(),
-        }
-    }
 }
 
 struct App {
@@ -281,6 +273,11 @@ impl App {
             .unwrap_or_default();
         // Settings from before a widget was added have a shorter playlist
         s.playlist.resize(MODE_NAMES.len(), false);
+        // ...and settings from before 1.2 have no Pro layout
+        let default_layout = Settings::default().layout;
+        while s.layout.len() < default_layout.len() {
+            s.layout.push(default_layout[s.layout.len()]);
+        }
 
         ui::apply_theme(&cc.egui_ctx);
         let shared = Arc::new(Mutex::new(Shared::default()));
@@ -335,13 +332,31 @@ impl App {
 
     /// What the screen is showing (or what the preview shows when offline)
     fn showing(&self) -> Slot {
+        self.screen_slot(self.screen)
+    }
+
+    /// Screens on the device: the connected board's, or the one picked in
+    /// Settings while offline
+    fn screens(&self) -> usize {
         match self.board.as_ref().filter(|b| b.ready) {
-            Some(b) if b.mode(self.screen) == MODE_CUSTOM => match self.board_page.or(self.s.customs.first().map(|p| p.id)) {
+            Some(b) => b.screens(),
+            None => self.s.device.screens(),
+        }
+    }
+
+    /// What screen `i` shows (or, offline, would show)
+    fn screen_slot(&self, i: usize) -> Slot {
+        let mode = match self.board.as_ref().filter(|b| b.ready) {
+            Some(b) => b.mode(i),
+            None if self.s.device.screens() > 1 => self.s.layout.get(i).copied().unwrap_or(0),
+            None => return self.preview,
+        };
+        match mode {
+            MODE_CUSTOM => match self.board_page.or(self.s.customs.first().map(|p| p.id)) {
                 Some(id) => Slot::Page(id),
                 None => Slot::Mode(MODE_CUSTOM),
             },
-            Some(b) => Slot::Mode(b.mode(self.screen)),
-            None => self.preview,
+            m => Slot::Mode(m),
         }
     }
 
@@ -414,6 +429,8 @@ impl App {
                     let screens = field(4).and_then(|s| s.parse::<usize>().ok()).unwrap_or(1).clamp(1, 8);
                     b.modes.resize(screens, 0);
                     b.device = field(5);
+                    // The board says what it is: the app follows
+                    self.s.device = Device::from_code(b.device.as_deref());
                     self.screen = self.screen.min(screens - 1);
                 }
                 // MODE|<n>[|<screen>]
@@ -424,6 +441,10 @@ impl App {
                     }
                     b.modes[screen] = m.min(MODE_NAMES.len() - 1);
                     need_page = b.modes[screen] == MODE_CUSTOM && self.board_page.is_none();
+                    // Keep the saved Pro layout in step with the button
+                    if b.modes.len() > 1 && screen < self.s.layout.len() {
+                        self.s.layout[screen] = b.modes[screen];
+                    }
                 }
                 ("ROT", Some(r)) => b.rotation = r as u8 % 4,
                 ("AUTO", Some(a)) => b.auto_cycle = a != 0,
@@ -451,9 +472,24 @@ impl App {
         if self.s.screen_rotation != 0 {
             self.send(format!("R|{}", self.s.screen_rotation));
         }
-        // Show whatever the preview was on
-        let slot = self.preview;
-        self.show(slot);
+        if self.screens() > 1 {
+            // Put every screen back the way it was last time
+            let selected = self.screen;
+            for i in 0..self.screens() {
+                self.screen = i;
+                let mode = self.s.layout.get(i).copied().unwrap_or(0);
+                let slot = match mode {
+                    MODE_CUSTOM => self.board_page.or(self.s.customs.first().map(|p| p.id)).map(Slot::Page).unwrap_or(Slot::Mode(mode)),
+                    m => Slot::Mode(m),
+                };
+                self.show(slot);
+            }
+            self.screen = selected;
+        } else {
+            // Show whatever the preview was on
+            let slot = self.preview;
+            self.show(slot);
+        }
         self.last_fast = Instant::now() - Duration::from_secs(60);
         self.last_slow = self.last_fast;
         self.last_rotate = Instant::now();
@@ -465,6 +501,17 @@ impl App {
             self.edit_page = Some(id);
         }
         if !self.board_ready() {
+            // Offline, a Pro's layout still changes, so the preview follows
+            // the click and the board gets it on the next connect
+            if self.s.device.screens() > 1 && self.screen < self.s.layout.len() {
+                self.s.layout[self.screen] = match slot {
+                    Slot::Mode(m) => m,
+                    Slot::Page(id) => {
+                        self.board_page = Some(id);
+                        MODE_CUSTOM
+                    }
+                };
+            }
             return;
         }
         let mode = match slot {
@@ -480,6 +527,9 @@ impl App {
                 b.modes[screen] = mode;
             }
             b.auto_cycle = false;
+        }
+        if multi && screen < self.s.layout.len() {
+            self.s.layout[screen] = mode;
         }
         // Feed it right away so it doesn't wait for the next tick
         let line = match slot {
@@ -680,12 +730,16 @@ mod tests {
             firmware: None,
             device: device.map(String::from),
         };
+        use super::Device;
         let pro = board(Some("PRO"), vec![0, 7, 4]);
-        assert_eq!((pro.name().as_str(), pro.screens(), pro.mode(1)), ("OrbDash Pro", 3, 7));
+        assert_eq!((pro.screens(), pro.mode(1)), (3, 7));
         let uno = board(None, vec![4]);
         // A single-screen board answers for any screen the app last picked
-        assert_eq!((uno.name().as_str(), uno.screens(), uno.mode(2)), ("OrbDash", 1, 4));
-        assert_eq!(board(Some("MINI"), vec![0]).name(), "OrbDash Mini");
+        assert_eq!((uno.screens(), uno.mode(2)), (1, 4));
+        assert_eq!(Device::from_code(pro.device.as_deref()), Device::Pro);
+        assert_eq!(Device::from_code(Some("mini")), Device::Mini);
+        assert_eq!(Device::from_code(uno.device.as_deref()), Device::Classic);
+        assert_eq!((Device::Pro.screens(), Device::Mini.name()), (3, "OrbDash Mini"));
     }
 
     /// Serve one HTTP reply on a free local port; returns "127.0.0.1:port"

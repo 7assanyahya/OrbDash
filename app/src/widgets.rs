@@ -40,6 +40,58 @@ pub const WARN: Color32 = Color32::from_rgb(255, 165, 0);
 pub const ALERT: Color32 = Color32::from_rgb(255, 0, 0);
 pub const PURPLE: Color32 = Color32::from_rgb(156, 105, 255);
 
+/// Which OrbDash you have. Learned from the board when it connects (its
+/// ORB|READY line), and picked in Settings for the preview while offline.
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Debug)]
+pub enum Device {
+    Classic,
+    Mini,
+    Pro,
+}
+
+impl Device {
+    pub const ALL: [Device; 3] = [Device::Classic, Device::Mini, Device::Pro];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Device::Classic => "OrbDash",
+            Device::Mini => "OrbDash Mini",
+            Device::Pro => "OrbDash Pro",
+        }
+    }
+
+    pub fn board(self) -> &'static str {
+        match self {
+            Device::Classic => "Arduino Uno",
+            Device::Mini => "ESP32-C3 SuperMini",
+            Device::Pro => "ESP32-S3 DevKit",
+        }
+    }
+
+    pub fn screens(self) -> usize {
+        if self == Device::Pro { 3 } else { 1 }
+    }
+
+    /// From the device field of ORB|READY ("MINI", "PRO", or none for the Uno)
+    pub fn from_code(code: Option<&str>) -> Device {
+        match code.map(|c| c.trim().to_ascii_uppercase()).as_deref() {
+            Some("PRO") => Device::Pro,
+            Some("MINI") => Device::Mini,
+            _ => Device::Classic,
+        }
+    }
+}
+
+/// Short name of a screen on a multi-screen device
+pub fn screen_side(screens: usize, i: usize) -> String {
+    match (screens, i) {
+        (3, 0) => "Left".into(),
+        (3, 1) => "Middle".into(),
+        (3, 2) => "Right".into(),
+        _ => format!("Screen {}", i + 1),
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone, Copy, PartialEq)]
 pub enum ClockExtra {
     Utc,
@@ -70,6 +122,9 @@ pub struct Settings {
     pub customs: Vec<CustomPage>,
     pub next_id: u64,
     pub start_with_windows: bool,
+    pub device: Device,
+    /// Widget on each screen of a multi-screen device, restored on connect
+    pub layout: Vec<usize>,
 }
 
 impl Default for Settings {
@@ -91,6 +146,9 @@ impl Default for Settings {
             customs: vec![CustomPage { id: 1, ..CustomPage::default() }],
             next_id: 2,
             start_with_windows: false,
+            device: Device::Classic,
+            // Pro: Claude 5H on the left, GT gauge in the middle, clock on the right
+            layout: vec![0, MODE_GT, MODE_CLOCK],
         }
     }
 }

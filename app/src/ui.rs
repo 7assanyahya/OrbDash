@@ -266,7 +266,7 @@ impl App {
         }
 
         // Device box pinned to the bottom of the sidebar
-        ui.add_space((ui.available_height() - 124.0).max(12.0));
+        ui.add_space((ui.available_height() - 150.0).max(12.0));
         {
             Frame::new()
                 .fill(CARD)
@@ -276,13 +276,18 @@ impl App {
                 .show(ui, |ui| {
                     ui.set_width(ui.available_width());
                     let (col, state) = match &self.board {
-                        Some(b) if b.ready => (OK, b.name()),
-                        Some(_) => (AMBER, "Board starting...".to_string()),
-                        None => (TEXT_LO, "Not connected".to_string()),
+                        Some(b) if b.ready => (OK, "Connected"),
+                        Some(_) => (AMBER, "Starting..."),
+                        None => (TEXT_LO, "Not connected"),
                     };
                     ui.horizontal(|ui| {
+                        let (r, _) = ui.allocate_exact_size(vec2(30.0, 20.0), Sense::hover());
+                        device_icon(ui.painter(), r, self.s.device, ACCENT);
+                        ui.label(RichText::new(self.s.device.name()).strong().color(TEXT_HI));
+                    });
+                    ui.horizontal(|ui| {
                         dot(ui, col);
-                        ui.label(RichText::new(state).strong().color(TEXT_HI));
+                        ui.label(RichText::new(state).size(12.5).color(TEXT_MID));
                     });
                     let port = if self.s.port.is_empty() { "No port picked".to_string() } else { self.s.port.clone() };
                     let fw = match self.board.as_ref().filter(|b| b.ready) {
@@ -323,7 +328,10 @@ impl App {
                 ui.label(RichText::new(sub).color(TEXT_MID));
             });
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                let name = self.slot_name(self.showing());
+                let mut name = self.slot_name(self.showing());
+                if self.screens() > 1 {
+                    name = format!("{} · {name}", screen_side(self.screens(), self.screen));
+                }
                 Frame::new()
                     .fill(CARD)
                     .stroke(Stroke::new(1.0, BORDER))
@@ -342,32 +350,76 @@ impl App {
         });
     }
 
-    /// On a board with several screens (the Pro): pick the one the app
+    /// On a device with several screens (the Pro): pick the one the app
     /// controls. Clicking a widget then puts it on that screen.
     fn screen_picker(&mut self, ui: &mut Ui) {
-        let Some(b) = self.board.as_ref().filter(|b| b.ready && b.screens() > 1) else { return };
-        let names: Vec<String> = (0..b.screens())
-            .map(|i| {
-                let side = match (b.screens(), i) {
-                    (3, 0) => "Left".to_string(),
-                    (3, 1) => "Middle".to_string(),
-                    (3, 2) => "Right".to_string(),
-                    _ => format!("Screen {}", i + 1),
-                };
-                format!("{side}
-{}", MODE_NAMES[b.mode(i)])
-            })
-            .collect();
+        let n = self.screens();
+        if n < 2 {
+            return;
+        }
+        let names: Vec<String> =
+            (0..n).map(|i| format!("{}\n{}", screen_side(n, i), self.slot_name(self.screen_slot(i)))).collect();
         ui.horizontal(|ui| {
-            for (i, n) in names.iter().enumerate() {
+            for (i, label) in names.iter().enumerate() {
                 let on = self.screen == i;
-                let text = RichText::new(n).size(12.5).color(if on { TEXT_HI } else { TEXT_MID });
-                if ui.add_sized([92.0, 40.0], egui::Button::selectable(on, text)).clicked() {
+                let text = RichText::new(label).size(12.5).color(if on { TEXT_HI } else { TEXT_MID });
+                if ui.add_sized([120.0, 42.0], egui::Button::selectable(on, text)).clicked() {
                     self.screen = i;
                 }
             }
         });
-        ui.add_space(6.0);
+    }
+
+    /// The Pro's three screens side by side, as on the desk. Click one to
+    /// choose it; the widget cards below then go to that screen.
+    fn pro_screens(&mut self, ui: &mut Ui) {
+        let n = self.screens();
+        let mut picked = None;
+        card(ui, |ui| {
+            ui.horizontal(|ui| {
+                ui.vertical(|ui| {
+                    ui.label(RichText::new(self.s.device.name()).size(15.0).strong().color(TEXT_HI));
+                    label_lo(ui, "Click a screen to choose it, then pick a widget below");
+                });
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    for r in (0..4u8).rev() {
+                        if ui.selectable_label(self.s.screen_rotation == r, format!("{}°", r as u32 * 90)).clicked() {
+                            self.set_rotation(r);
+                        }
+                    }
+                    label_lo(ui, "Turn");
+                });
+            });
+            ui.add_space(8.0);
+            let gap = 28.0;
+            let avail = ui.available_width();
+            let size = ((avail - gap * (n - 1) as f32) / n as f32 - 16.0).clamp(150.0, 260.0);
+            let total = n as f32 * (size + 16.0) + gap * (n - 1) as f32;
+            ui.horizontal(|ui| {
+                ui.add_space(((avail - total) / 2.0).max(0.0));
+                for i in 0..n {
+                    ui.allocate_ui_with_layout(vec2(size + 16.0, size + 64.0), Layout::top_down(Align::Center), |ui| {
+                        let resp = self.draw_screen(ui, size, i);
+                        let on = self.screen == i;
+                        let ring = if on { ACCENT } else if resp.hovered() { Color32::from_rgb(80, 84, 100) } else { Color32::TRANSPARENT };
+                        ui.painter().circle_stroke(resp.rect.center(), size / 2.0 * 126.0 / 120.0 + 5.0, Stroke::new(3.0, ring));
+                        ui.add_space(8.0);
+                        let side = RichText::new(screen_side(n, i).to_uppercase()).size(12.0).strong();
+                        ui.label(if on { side.color(ACCENT) } else { side.color(TEXT_LO) });
+                        ui.label(RichText::new(self.slot_name(self.screen_slot(i))).color(if on { TEXT_HI } else { TEXT_MID }));
+                        if resp.on_hover_cursor(CursorIcon::PointingHand).clicked() {
+                            picked = Some(i);
+                        }
+                    });
+                    if i + 1 < n {
+                        ui.add_space(gap);
+                    }
+                }
+            });
+        });
+        if let Some(i) = picked {
+            self.screen = i;
+        }
     }
 
     fn slot_name(&self, slot: Slot) -> String {
@@ -386,12 +438,46 @@ impl App {
         };
         let block = self.data_line(|d| d.block_pct());
 
+        if self.screens() > 1 {
+            self.pro_screens(ui);
+            ui.add_space(6.0);
+            let cpu = sys.cpu;
+            let ram = sys.ram_pct() as f32;
+            tiles(
+                ui,
+                vec![
+                    ("CPU", format!("{cpu:.0}%"), "load".into(), Some(cpu / 100.0), level_color(cpu)),
+                    (
+                        "GPU",
+                        sys.gpu.map(|g| format!("{g:.0}%")).unwrap_or("--".into()),
+                        if sys.gpu.is_some() { "load".into() } else { "no reading".into() },
+                        sys.gpu.map(|g| g / 100.0),
+                        level_color(sys.gpu.unwrap_or(0.0)),
+                    ),
+                    ("RAM", format!("{ram:.0}%"), format!("{:.1} / {:.0} GB", sys.ram_used as f64 / 1e9, sys.ram_total as f64 / 1e9), Some(ram / 100.0), level_color(ram)),
+                    ("Claude 5h", human(claude.block_tokens), format!("resets in {}", claude.time_left()), Some(block as f32 / 100.0), CLAUDE),
+                ],
+            );
+            ui.add_space(6.0);
+            let side = screen_side(self.screens(), self.screen).to_lowercase();
+            card(ui, |ui| {
+                card_title(ui, &format!("Show on the {side} screen"), "Click a widget to put it there");
+                self.widget_grid(ui);
+            });
+            return;
+        }
+
         ui.horizontal_top(|ui| {
             ui.allocate_ui_with_layout(vec2(340.0, 0.0), Layout::top_down(Align::Center), |ui| {
                 card(ui, |ui| {
                     ui.vertical_centered(|ui| {
-                        self.screen_picker(ui);
-                        self.draw_screen(ui, 290.0);
+                        ui.horizontal(|ui| {
+                            let (r, _) = ui.allocate_exact_size(vec2(30.0, 20.0), Sense::hover());
+                        device_icon(ui.painter(), r, self.s.device, ACCENT);
+                            ui.label(RichText::new(self.s.device.name()).strong().color(TEXT_HI));
+                        });
+                        ui.add_space(4.0);
+                        self.draw_screen(ui, 290.0, 0);
                         ui.add_space(6.0);
                         ui.horizontal(|ui| {
                             label_lo(ui, "Turn");
@@ -460,6 +546,8 @@ impl App {
     fn widget_grid(&mut self, ui: &mut Ui) {
         let showing = self.showing();
         let live = self.board_ready();
+        let n = self.screens();
+        let on_screens: Vec<Slot> = (0..n).map(|i| self.screen_slot(i)).collect();
         let mut items: Vec<(Slot, String, Color32)> =
             BUILTINS.iter().map(|&m| (Slot::Mode(m), MODE_NAMES[m].to_string(), widget_info(m).0)).collect();
         items.extend(self.s.customs.iter().map(|p| (Slot::Page(p.id), p.title.clone(), rgb(p.color))));
@@ -477,8 +565,28 @@ impl App {
                 p.rect_stroke(rect, CornerRadius::same(10), Stroke::new(1.0, stroke), egui::StrokeKind::Inside);
                 p.circle_filled(rect.left_top() + vec2(18.0, 21.0), 5.0, color);
                 p.text(rect.left_top() + vec2(30.0, 21.0), Align2::LEFT_CENTER, &name, FontId::proportional(14.0), TEXT_HI);
-                let sub = if on && live { "On screen" } else if on { "Selected" } else { "Click to show" };
+                let sub = if n > 1 {
+                    if on { "On this screen".to_string() } else { "Click to show".to_string() }
+                } else if on && live {
+                    "On screen".to_string()
+                } else if on {
+                    "Selected".to_string()
+                } else {
+                    "Click to show".to_string()
+                };
                 p.text(rect.left_top() + vec2(30.0, 42.0), Align2::LEFT_CENTER, sub, FontId::proportional(12.0), if on { ACCENT } else { TEXT_LO });
+                // Pro: a letter for every screen showing this widget
+                if n > 1 {
+                    let mut x = rect.right() - 14.0;
+                    for i in (0..n).rev().filter(|&i| on_screens[i] == slot) {
+                        let c = Pos2::new(x, rect.top() + 14.0);
+                        let col = if i == self.screen { ACCENT } else { Color32::from_rgb(60, 64, 78) };
+                        p.circle_filled(c, 8.5, col);
+                        let letter = screen_side(n, i).chars().next().unwrap_or('?').to_string();
+                        p.text(c, Align2::CENTER_CENTER, letter, FontId::proportional(10.5), TEXT_HI);
+                        x -= 20.0;
+                    }
+                }
                 if resp.on_hover_cursor(CursorIcon::PointingHand).clicked() {
                     clicked = Some(slot);
                 }
@@ -510,9 +618,9 @@ impl App {
     fn widgets_page(&mut self, ui: &mut Ui) {
         let showing = self.showing();
         let mut clicked = None;
-        if self.board.as_ref().is_some_and(|b| b.ready && b.screens() > 1) {
+        if self.screens() > 1 {
             card(ui, |ui| {
-                card_title(ui, "Screen", "Show and Rotate act on this screen");
+                card_title(ui, "Which screen", "Show and rotation act on this screen");
                 self.screen_picker(ui);
             });
             ui.add_space(6.0);
@@ -907,6 +1015,35 @@ impl App {
     // ---- Settings ----------------------------------------------------------
 
     fn settings_page(&mut self, ui: &mut Ui) {
+        let connected = self.board_ready();
+        card(ui, |ui| {
+            let sub = if connected { "Detected from the connected board" } else { "Picked here while nothing is connected; found automatically when you connect" };
+            card_title(ui, "Your device", sub);
+            ui.horizontal(|ui| {
+                for dev in Device::ALL {
+                    let on = self.s.device == dev;
+                    let (rect, resp) = ui.allocate_exact_size(vec2(232.0, 92.0), if connected { Sense::hover() } else { Sense::click() });
+                    let p = ui.painter();
+                    let fill = if on { ACCENT.gamma_multiply(0.16) } else if resp.hovered() && !connected { CARD_HI } else { Color32::from_rgb(20, 22, 28) };
+                    p.rect_filled(rect, CornerRadius::same(12), fill);
+                    p.rect_stroke(rect, CornerRadius::same(12), Stroke::new(1.0, if on { ACCENT } else { BORDER }), egui::StrokeKind::Inside);
+                    device_icon(p, Rect::from_min_size(rect.min + vec2(16.0, 18.0), vec2(56.0, 30.0)), dev, if on { ACCENT } else { TEXT_LO });
+                    p.text(rect.min + vec2(84.0, 26.0), Align2::LEFT_CENTER, dev.name(), FontId::proportional(14.5), TEXT_HI);
+                    p.text(rect.min + vec2(84.0, 47.0), Align2::LEFT_CENTER, dev.board(), FontId::proportional(11.5), TEXT_LO);
+                    let screens = if dev.screens() == 1 { "1 screen".to_string() } else { format!("{} screens", dev.screens()) };
+                    p.text(rect.min + vec2(84.0, 65.0), Align2::LEFT_CENTER, screens, FontId::proportional(11.5), TEXT_LO);
+                    if on {
+                        let tag = if connected { "Connected" } else { "Selected" };
+                        p.text(rect.right_top() + vec2(-12.0, 14.0), Align2::RIGHT_CENTER, tag, FontId::proportional(11.0), ACCENT);
+                    }
+                    if !connected && resp.on_hover_cursor(CursorIcon::PointingHand).clicked() {
+                        self.s.device = dev;
+                        self.screen = self.screen.min(dev.screens() - 1);
+                    }
+                }
+            });
+        });
+        ui.add_space(6.0);
         ui.columns(2, |cols| {
             card(&mut cols[0], |ui| {
                 card_title(ui, "Connection", "The Arduino's USB port");
@@ -977,9 +1114,9 @@ impl App {
 
     // ---- Round preview -----------------------------------------------------
 
-    /// What the round display shows, drawn `size` px across
-    fn draw_screen(&self, ui: &mut Ui, size: f32) {
-        let slot = self.showing();
+    /// What screen `i` shows, drawn `size` px across
+    fn draw_screen(&self, ui: &mut Ui, size: f32, i: usize) -> Response {
+        let slot = self.screen_slot(i);
         let view = {
             let sh = self.shared.lock().unwrap();
             let (mode, page) = match slot {
@@ -991,7 +1128,7 @@ impl App {
             d.view(mode)
         };
 
-        let (rect, _) = ui.allocate_exact_size(Vec2::splat(size), Sense::hover());
+        let (rect, resp) = ui.allocate_exact_size(Vec2::splat(size), Sense::click());
         let k = size / 240.0;
         let origin = rect.min;
         let at = |x: f32, y: f32| Pos2::new(origin.x + x * k, origin.y + y * k);
@@ -1005,7 +1142,7 @@ impl App {
         if let Some(g) = view.gauge {
             // No status line: on the board it would sit on the yellow ring
             draw_gauge(p, &at, k, g);
-            return;
+            return resp;
         }
 
         // 270° ring opening at the bottom, like the firmware's drawArc
@@ -1029,10 +1166,23 @@ impl App {
             p.text(at(120.0, t.y), Align2::CENTER_TOP, &t.text, font, t.color);
         }
         let tag = match &self.board {
-            Some(b) if b.ready => format!("LIVE [{}/{}]", b.mode(self.screen) + 1, MODE_NAMES.len()),
+            Some(b) if b.ready => format!("LIVE [{}/{}]", b.mode(i) + 1, MODE_NAMES.len()),
             _ => "PREVIEW".into(),
         };
         p.text(at(120.0, 200.0), Align2::CENTER_TOP, tag, FontId::monospace(8.0 * k), DIM);
+        resp
+    }
+}
+
+/// Tiny outline of a device: one round screen, or three in a row for the Pro
+fn device_icon(p: &egui::Painter, r: Rect, dev: Device, color: Color32) {
+    let n = dev.screens() as f32;
+    let body = if dev == Device::Mini { r.shrink2(vec2(r.width() * 0.25, 0.0)) } else { r };
+    p.rect_stroke(body, CornerRadius::same(4), Stroke::new(1.5, color), egui::StrokeKind::Inside);
+    let rad = (body.height() * 0.32).min(body.width() / (n * 2.0 + 1.0));
+    for k in 0..dev.screens() {
+        let x = body.left() + body.width() * (k as f32 + 0.5) / n;
+        p.circle_stroke(Pos2::new(x, body.center().y), rad, Stroke::new(1.5, color));
     }
 }
 

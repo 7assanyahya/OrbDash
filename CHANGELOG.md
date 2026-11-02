@@ -12,9 +12,13 @@
   widgets, the boot and waiting animations, the button and the serial
   protocol. Frames are drawn in memory and sent whole, so nothing flickers.
   The board you compile for picks the device.
-- **Three screens in the app:** on the Pro, a Left / Middle / Right picker on
-  the Dashboard and Widgets pages chooses which screen a click goes to. The
-  sidebar names the device (OrbDash, Mini or Pro) and its firmware.
+- **The app knows your device:** pick OrbDash, Mini or Pro in Settings, or
+  just connect: the board tells the app what it is. The sidebar and the
+  Dashboard show which one you have, even with nothing plugged in.
+- **Pro dashboard:** all three screens side by side, live. Click a screen to
+  choose it (it gets a violet ring), then click a widget to put it there.
+  Widget cards show L / M / R badges for the screens they are on. The
+  Pro's layout is saved and put back every time it connects.
 - **Protocol:** `W|<mode>|<screen>`, `MODE|<n>|<screen>`, the `?` request,
   and `ORB|READY` now also reports the screen count and device.
 - Wiring diagrams for both new devices (`docs/wiring_esp.py`).
