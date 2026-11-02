@@ -28,3 +28,6 @@ desktop.ini
 
 # Brand kit build files (the exports themselves are committed)
 /brand/
+
+# Edge profiles left by the diagram and brand scripts
+.edge/

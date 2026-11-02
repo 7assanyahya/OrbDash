@@ -219,11 +219,32 @@ enum Tab {
 struct Board {
     connected_at: Instant,
     ready: bool,
-    mode: usize,
+    /// Widget on each screen: one for the Uno and Mini, three for the Pro
+    modes: Vec<usize>,
     rotation: u8,
     auto_cycle: bool,
     /// Firmware version from ORB|READY (None: firmware before 1.1.0)
     firmware: Option<String>,
+    /// "MINI" or "PRO" from ORB|READY (None: the Uno)
+    device: Option<String>,
+}
+
+impl Board {
+    fn mode(&self, screen: usize) -> usize {
+        self.modes.get(screen).or(self.modes.first()).copied().unwrap_or(0)
+    }
+
+    fn screens(&self) -> usize {
+        self.modes.len().max(1)
+    }
+
+    /// "OrbDash Pro", "OrbDash Mini", or "OrbDash" for the Uno
+    fn name(&self) -> String {
+        match self.device.as_deref() {
+            Some(d) => format!("OrbDash {}{}", &d[..1], d[1..].to_lowercase()),
+            None => "OrbDash".into(),
+        }
+    }
 }
 
 struct App {
@@ -248,6 +269,8 @@ struct App {
     last_reconnect: Instant,
     custom_dirty: bool,
     app_error: Option<String>,
+    /// Which screen the app controls on a board with several (the Pro)
+    screen: usize,
 }
 
 impl App {
@@ -284,6 +307,7 @@ impl App {
             last_reconnect: long_ago,
             custom_dirty: false,
             app_error: None,
+            screen: 0,
         }
     }
 
@@ -312,11 +336,11 @@ impl App {
     /// What the screen is showing (or what the preview shows when offline)
     fn showing(&self) -> Slot {
         match self.board.as_ref().filter(|b| b.ready) {
-            Some(b) if b.mode == MODE_CUSTOM => match self.board_page.or(self.s.customs.first().map(|p| p.id)) {
+            Some(b) if b.mode(self.screen) == MODE_CUSTOM => match self.board_page.or(self.s.customs.first().map(|p| p.id)) {
                 Some(id) => Slot::Page(id),
                 None => Slot::Mode(MODE_CUSTOM),
             },
-            Some(b) => Slot::Mode(b.mode),
+            Some(b) => Slot::Mode(b.mode(self.screen)),
             None => self.preview,
         }
     }
@@ -325,7 +349,9 @@ impl App {
 
     fn connect(&mut self, ctx: &egui::Context) {
         if self.s.port.is_empty() {
-            if let Some(p) = self.ports.iter().find(|p| p.looks_like_arduino).or(self.ports.first()) {
+            // Only a port that looks like one of our boards: never guess, it
+            // could be a 3D printer
+            if let Some(p) = self.ports.iter().find(|p| p.looks_like_arduino) {
                 self.s.port = p.name.clone();
             }
         }
@@ -340,12 +366,17 @@ impl App {
                 self.board = Some(Board {
                     connected_at: Instant::now(),
                     ready: false,
-                    mode: 0,
+                    modes: vec![0],
                     rotation: 0,
                     auto_cycle: false,
                     firmware: None,
+                    device: None,
                 });
                 self.board_page = None;
+                self.screen = 0;
+                // ESP32 boards don't restart when the port opens: ask them
+                // to say ORB|READY again (the Uno ignores it)
+                self.send("?".into());
             }
             Err(e) => self.status = format!("Can't open {}: {e}", self.s.port),
         }
@@ -355,7 +386,7 @@ impl App {
     fn disconnect(&mut self, reason: &str) {
         if let Some(b) = &self.board {
             // Keep previewing what the screen last showed
-            self.preview = match b.mode {
+            self.preview = match b.mode(self.screen) {
                 MODE_CUSTOM => self.board_page.map(Slot::Page).unwrap_or(Slot::Mode(0)),
                 m => Slot::Mode(m),
             };
@@ -374,14 +405,25 @@ impl App {
         if let Some(b) = &mut self.board {
             match (key, val) {
                 // RTFT: firmware from before the rename
+                // ORB|READY|<widgets>|<version>|<screens>|<device>
                 ("ORB" | "RTFT", _) => {
                     just_ready = !b.ready;
                     b.ready = true;
-                    b.firmware = line.split('|').nth(3).map(|v| v.trim().to_string()).filter(|v| !v.is_empty());
+                    let field = |i: usize| line.split('|').nth(i).map(|v| v.trim().to_string()).filter(|v| !v.is_empty());
+                    b.firmware = field(3);
+                    let screens = field(4).and_then(|s| s.parse::<usize>().ok()).unwrap_or(1).clamp(1, 8);
+                    b.modes.resize(screens, 0);
+                    b.device = field(5);
+                    self.screen = self.screen.min(screens - 1);
                 }
+                // MODE|<n>[|<screen>]
                 ("MODE", Some(m)) => {
-                    b.mode = m.min(MODE_NAMES.len() - 1);
-                    need_page = b.mode == MODE_CUSTOM && self.board_page.is_none();
+                    let screen = line.split('|').nth(2).and_then(|s| s.trim().parse::<usize>().ok()).unwrap_or(0);
+                    if screen >= b.modes.len() {
+                        b.modes.resize(screen + 1, 0);
+                    }
+                    b.modes[screen] = m.min(MODE_NAMES.len() - 1);
+                    need_page = b.modes[screen] == MODE_CUSTOM && self.board_page.is_none();
                 }
                 ("ROT", Some(r)) => b.rotation = r as u8 % 4,
                 ("AUTO", Some(a)) => b.auto_cycle = a != 0,
@@ -429,9 +471,14 @@ impl App {
             Slot::Mode(m) => m,
             Slot::Page(_) => MODE_CUSTOM,
         };
-        self.send(format!("W|{mode}"));
+        let screen = self.screen;
+        let multi = self.board.as_ref().is_some_and(|b| b.screens() > 1);
+        // The Uno and Mini have one screen and take the short form
+        self.send(if multi { format!("W|{mode}|{screen}") } else { format!("W|{mode}") });
         if let Some(b) = &mut self.board {
-            b.mode = mode;
+            if screen < b.modes.len() {
+                b.modes[screen] = mode;
+            }
             b.auto_cycle = false;
         }
         // Feed it right away so it doesn't wait for the next tick
@@ -544,8 +591,9 @@ impl App {
         // Claude every 5 s. The custom page every 5 s, every second for
         // timers, and right away after an edit.
         let page_ticks = self.board_page.and_then(|id| self.page(id)).is_some_and(|p| p.source.ticks());
-        let on_custom = self.board.as_ref().is_some_and(|b| b.mode == MODE_CUSTOM);
-        let on_gt = self.board.as_ref().is_some_and(|b| b.mode == MODE_GT);
+        // On the Pro, any of its screens may need the data
+        let on_custom = self.board.as_ref().is_some_and(|b| b.modes.contains(&MODE_CUSTOM));
+        let on_gt = self.board.as_ref().is_some_and(|b| b.modes.contains(&MODE_GT));
         if self.last_fast.elapsed() >= Duration::from_secs(1) {
             self.last_fast = Instant::now();
             let clock = self.line_for(MODE_CLOCK);
@@ -619,6 +667,25 @@ mod tests {
         assert_eq!(o.value, "\"a");
         let o = super::run_command("powershell -NoProfile -Command \"Write-Output '42|7'\"");
         assert_eq!((o.value.as_str(), o.pct), ("42", Some(7)));
+    }
+
+    #[test]
+    fn board_devices() {
+        let board = |device: Option<&str>, modes: Vec<usize>| super::Board {
+            connected_at: std::time::Instant::now(),
+            ready: true,
+            modes,
+            rotation: 0,
+            auto_cycle: false,
+            firmware: None,
+            device: device.map(String::from),
+        };
+        let pro = board(Some("PRO"), vec![0, 7, 4]);
+        assert_eq!((pro.name().as_str(), pro.screens(), pro.mode(1)), ("OrbDash Pro", 3, 7));
+        let uno = board(None, vec![4]);
+        // A single-screen board answers for any screen the app last picked
+        assert_eq!((uno.name().as_str(), uno.screens(), uno.mode(2)), ("OrbDash", 1, 4));
+        assert_eq!(board(Some("MINI"), vec![0]).name(), "OrbDash Mini");
     }
 
     /// Serve one HTTP reply on a free local port; returns "127.0.0.1:port"

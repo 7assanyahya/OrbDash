@@ -276,9 +276,9 @@ impl App {
                 .show(ui, |ui| {
                     ui.set_width(ui.available_width());
                     let (col, state) = match &self.board {
-                        Some(b) if b.ready => (OK, "Connected"),
-                        Some(_) => (AMBER, "Board starting..."),
-                        None => (TEXT_LO, "Not connected"),
+                        Some(b) if b.ready => (OK, b.name()),
+                        Some(_) => (AMBER, "Board starting...".to_string()),
+                        None => (TEXT_LO, "Not connected".to_string()),
                     };
                     ui.horizontal(|ui| {
                         dot(ui, col);
@@ -342,6 +342,34 @@ impl App {
         });
     }
 
+    /// On a board with several screens (the Pro): pick the one the app
+    /// controls. Clicking a widget then puts it on that screen.
+    fn screen_picker(&mut self, ui: &mut Ui) {
+        let Some(b) = self.board.as_ref().filter(|b| b.ready && b.screens() > 1) else { return };
+        let names: Vec<String> = (0..b.screens())
+            .map(|i| {
+                let side = match (b.screens(), i) {
+                    (3, 0) => "Left".to_string(),
+                    (3, 1) => "Middle".to_string(),
+                    (3, 2) => "Right".to_string(),
+                    _ => format!("Screen {}", i + 1),
+                };
+                format!("{side}
+{}", MODE_NAMES[b.mode(i)])
+            })
+            .collect();
+        ui.horizontal(|ui| {
+            for (i, n) in names.iter().enumerate() {
+                let on = self.screen == i;
+                let text = RichText::new(n).size(12.5).color(if on { TEXT_HI } else { TEXT_MID });
+                if ui.add_sized([92.0, 40.0], egui::Button::selectable(on, text)).clicked() {
+                    self.screen = i;
+                }
+            }
+        });
+        ui.add_space(6.0);
+    }
+
     fn slot_name(&self, slot: Slot) -> String {
         match slot {
             Slot::Mode(m) => MODE_NAMES[m].to_string(),
@@ -362,7 +390,8 @@ impl App {
             ui.allocate_ui_with_layout(vec2(340.0, 0.0), Layout::top_down(Align::Center), |ui| {
                 card(ui, |ui| {
                     ui.vertical_centered(|ui| {
-                        self.screen(ui, 290.0);
+                        self.screen_picker(ui);
+                        self.draw_screen(ui, 290.0);
                         ui.add_space(6.0);
                         ui.horizontal(|ui| {
                             label_lo(ui, "Turn");
@@ -481,6 +510,13 @@ impl App {
     fn widgets_page(&mut self, ui: &mut Ui) {
         let showing = self.showing();
         let mut clicked = None;
+        if self.board.as_ref().is_some_and(|b| b.ready && b.screens() > 1) {
+            card(ui, |ui| {
+                card_title(ui, "Screen", "Show and Rotate act on this screen");
+                self.screen_picker(ui);
+            });
+            ui.add_space(6.0);
+        }
         card(ui, |ui| {
             card_title(ui, "Built-in widgets", "Switch on the ones to include in rotation");
             for (i, m) in BUILTINS.into_iter().enumerate() {
@@ -942,7 +978,7 @@ impl App {
     // ---- Round preview -----------------------------------------------------
 
     /// What the round display shows, drawn `size` px across
-    fn screen(&self, ui: &mut Ui, size: f32) {
+    fn draw_screen(&self, ui: &mut Ui, size: f32) {
         let slot = self.showing();
         let view = {
             let sh = self.shared.lock().unwrap();
@@ -993,7 +1029,7 @@ impl App {
             p.text(at(120.0, t.y), Align2::CENTER_TOP, &t.text, font, t.color);
         }
         let tag = match &self.board {
-            Some(b) if b.ready => format!("LIVE [{}/{}]", b.mode + 1, MODE_NAMES.len()),
+            Some(b) if b.ready => format!("LIVE [{}/{}]", b.mode(self.screen) + 1, MODE_NAMES.len()),
             _ => "PREVIEW".into(),
         };
         p.text(at(120.0, 200.0), Align2::CENTER_TOP, tag, FontId::monospace(8.0 * k), DIM);

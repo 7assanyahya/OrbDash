@@ -134,26 +134,29 @@ pub struct PortInfo {
     pub looks_like_arduino: bool,
 }
 
+/// USB vendors of the boards OrbDash runs on: Arduino (2), WCH CH340/CH343,
+/// FTDI, Silicon Labs CP210x, Espressif (ESP32-C3/S3 native USB).
+/// Matched by ID, not by name: "USB Serial Device" is also what a 3D printer
+/// shows up as, and auto-connect must never pick one of those.
+const BOARD_VIDS: [u16; 6] = [0x2341, 0x2A03, 0x1A86, 0x0403, 0x10C4, 0x303A];
+
 pub fn list_ports() -> Vec<PortInfo> {
     let mut ports: Vec<PortInfo> = serialport::available_ports()
         .unwrap_or_default()
         .into_iter()
         .map(|p| {
-            let desc = match &p.port_type {
+            let (desc, vid) = match &p.port_type {
                 serialport::SerialPortType::UsbPort(u) => {
                     let s = format!(
                         "{} {}",
                         u.manufacturer.clone().unwrap_or_default(),
                         u.product.clone().unwrap_or_default()
                     );
-                    s.trim().to_string()
+                    (s.trim().to_string(), Some(u.vid))
                 }
-                _ => String::new(),
+                _ => (String::new(), None),
             };
-            let lower = desc.to_lowercase();
-            let looks_like_arduino = ["arduino", "ch340", "ch341", "usb serial", "usb-serial", "wch"]
-                .iter()
-                .any(|k| lower.contains(k));
+            let looks_like_arduino = vid.is_some_and(|v| BOARD_VIDS.contains(&v));
             let label = if desc.is_empty() {
                 p.port_name.clone()
             } else {

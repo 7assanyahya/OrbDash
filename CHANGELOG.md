@@ -1,5 +1,33 @@
 # Changelog
 
+## 1.2.0 (2026-11-02)
+
+### New
+
+- **OrbDash Mini:** an ESP32-C3 SuperMini with one display in a small pod
+  (about 50 × 52 × 56 mm). Case in `case/mini/`, wiring in the README.
+- **OrbDash Pro:** an ESP32-S3 DevKit with three displays in a row on a wide
+  console (about 142 × 86 × 58 mm). Case in `case/pro/`.
+- **ESP32 firmware** (`firmware/OrbDashESP`) for both: the same eight
+  widgets, the boot and waiting animations, the button and the serial
+  protocol. Frames are drawn in memory and sent whole, so nothing flickers.
+  The board you compile for picks the device.
+- **Three screens in the app:** on the Pro, a Left / Middle / Right picker on
+  the Dashboard and Widgets pages chooses which screen a click goes to. The
+  sidebar names the device (OrbDash, Mini or Pro) and its firmware.
+- **Protocol:** `W|<mode>|<screen>`, `MODE|<n>|<screen>`, the `?` request,
+  and `ORB|READY` now also reports the screen count and device.
+- Wiring diagrams for both new devices (`docs/wiring_esp.py`).
+
+### Fixed
+
+- **Port detection by USB ID:** the app used to treat any "USB Serial
+  Device" as a board, which includes 3D printers. Auto-connect now only picks
+  Arduino, CH340, CP210x, FTDI and Espressif boards, and never guesses.
+- The app builds again: `Cargo.toml` had an `edition` that doesn't exist.
+
+The Uno firmware is unchanged (1.1.0) and works with this app.
+
 ## 1.1.0 (2026-11-01)
 
 ### New

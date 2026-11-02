@@ -1,0 +1,226 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 1360" width="1200" height="1360" font-family="Segoe UI, Helvetica, Arial, sans-serif">
+<rect width="1200" height="1360" rx="18" fill="#f6f7f9"/>
+<text x="40" y="48" font-size="28" fill="#1f2933" text-anchor="start" font-weight="700">OrbDash Pro wiring</text>
+<text x="40" y="74" font-size="14" fill="#5f6b7a" text-anchor="start" font-weight="normal">ESP32-S3 DevKit + three 1.28&#8221; GC9A01 displays. VCC, GND, SCL, SDA, DC and RST are shared; each display has its own CS.</text>
+<rect x="60" y="300" width="260" height="560" rx="12" fill="#1f2328" stroke="#0d0f12" stroke-width="3"/>
+<rect x="168.0" y="286" width="44" height="22" rx="5" fill="#b8c0c8" stroke="#7d8790" stroke-width="2"/>
+<text x="190.0" y="304" font-size="10" fill="#3b4650" text-anchor="middle" font-weight="700">USB-C</text>
+<text x="84" y="348" font-size="18" fill="#ffffff" text-anchor="start" font-weight="700">ESP32-S3</text>
+<text x="84" y="370" font-size="12" fill="#9aa4b2" text-anchor="start" font-weight="normal">DevKit</text>
+<rect x="304" y="403" width="14" height="14" rx="2" fill="#d7dde3"/>
+<text x="294" y="415" font-size="13" fill="#ffffff" text-anchor="end" font-weight="700">3V3</text>
+<rect x="304" y="449" width="14" height="14" rx="2" fill="#d7dde3"/>
+<text x="294" y="461" font-size="13" fill="#ffffff" text-anchor="end" font-weight="700">GND</text>
+<rect x="304" y="495" width="14" height="14" rx="2" fill="#d7dde3"/>
+<text x="294" y="507" font-size="13" fill="#ffffff" text-anchor="end" font-weight="700">GPIO12</text>
+<text x="294" y="523" font-size="10.5" fill="#9aa4b2" text-anchor="end" font-weight="normal">SPI SCK</text>
+<rect x="304" y="541" width="14" height="14" rx="2" fill="#d7dde3"/>
+<text x="294" y="553" font-size="13" fill="#ffffff" text-anchor="end" font-weight="700">GPIO11</text>
+<text x="294" y="569" font-size="10.5" fill="#9aa4b2" text-anchor="end" font-weight="normal">SPI MOSI</text>
+<rect x="304" y="587" width="14" height="14" rx="2" fill="#d7dde3"/>
+<text x="294" y="599" font-size="13" fill="#ffffff" text-anchor="end" font-weight="700">GPIO9</text>
+<rect x="304" y="633" width="14" height="14" rx="2" fill="#d7dde3"/>
+<text x="294" y="645" font-size="13" fill="#ffffff" text-anchor="end" font-weight="700">GPIO8</text>
+<rect x="304" y="679" width="14" height="14" rx="2" fill="#d7dde3"/>
+<text x="294" y="691" font-size="13" fill="#ffffff" text-anchor="end" font-weight="700">GPIO10</text>
+<text x="294" y="707" font-size="10.5" fill="#9aa4b2" text-anchor="end" font-weight="normal">CS left</text>
+<rect x="304" y="725" width="14" height="14" rx="2" fill="#d7dde3"/>
+<text x="294" y="737" font-size="13" fill="#ffffff" text-anchor="end" font-weight="700">GPIO13</text>
+<text x="294" y="753" font-size="10.5" fill="#9aa4b2" text-anchor="end" font-weight="normal">CS middle</text>
+<rect x="304" y="771" width="14" height="14" rx="2" fill="#d7dde3"/>
+<text x="294" y="783" font-size="13" fill="#ffffff" text-anchor="end" font-weight="700">GPIO14</text>
+<text x="294" y="799" font-size="10.5" fill="#9aa4b2" text-anchor="end" font-weight="normal">CS right</text>
+<rect x="860" y="110" width="92" height="220" rx="10" fill="#1d2b4f" stroke="#121b33" stroke-width="3"/>
+<circle cx="1060" cy="220.0" r="128.0" fill="#1d2b4f" stroke="#121b33" stroke-width="3"/>
+<circle cx="1060" cy="220.0" r="104.0" fill="#000"/>
+<path d="M989.6,259.6 A81.4,81.4 0 1 1 1130.4,259.6" fill="none" stroke="#8B5CF6" stroke-width="9" stroke-linecap="round"/>
+<text x="1060" y="226.0" font-size="15" fill="#ffffff" text-anchor="middle" font-weight="700">LEFT</text>
+<circle cx="874" cy="130" r="6" fill="#d7dde3" stroke="#8a95a3"/>
+<text x="888" y="135" font-size="13" fill="#ffffff" text-anchor="start" font-weight="700">VCC</text>
+<circle cx="874" cy="160" r="6" fill="#d7dde3" stroke="#8a95a3"/>
+<text x="888" y="165" font-size="13" fill="#ffffff" text-anchor="start" font-weight="700">GND</text>
+<circle cx="874" cy="190" r="6" fill="#d7dde3" stroke="#8a95a3"/>
+<text x="888" y="195" font-size="13" fill="#ffffff" text-anchor="start" font-weight="700">SCL</text>
+<circle cx="874" cy="220" r="6" fill="#d7dde3" stroke="#8a95a3"/>
+<text x="888" y="225" font-size="13" fill="#ffffff" text-anchor="start" font-weight="700">SDA</text>
+<circle cx="874" cy="250" r="6" fill="#d7dde3" stroke="#8a95a3"/>
+<text x="888" y="255" font-size="13" fill="#ffffff" text-anchor="start" font-weight="700">DC</text>
+<circle cx="874" cy="280" r="6" fill="#d7dde3" stroke="#8a95a3"/>
+<text x="888" y="285" font-size="13" fill="#ffffff" text-anchor="start" font-weight="700">CS</text>
+<circle cx="874" cy="310" r="6" fill="#d7dde3" stroke="#8a95a3"/>
+<text x="888" y="315" font-size="13" fill="#ffffff" text-anchor="start" font-weight="700">RST</text>
+<rect x="860" y="440" width="92" height="220" rx="10" fill="#1d2b4f" stroke="#121b33" stroke-width="3"/>
+<circle cx="1060" cy="550.0" r="128.0" fill="#1d2b4f" stroke="#121b33" stroke-width="3"/>
+<circle cx="1060" cy="550.0" r="104.0" fill="#000"/>
+<path d="M989.6,589.6 A81.4,81.4 0 1 1 1130.4,589.6" fill="none" stroke="#8B5CF6" stroke-width="9" stroke-linecap="round"/>
+<text x="1060" y="556.0" font-size="15" fill="#ffffff" text-anchor="middle" font-weight="700">MIDDLE</text>
+<circle cx="874" cy="460" r="6" fill="#d7dde3" stroke="#8a95a3"/>
+<text x="888" y="465" font-size="13" fill="#ffffff" text-anchor="start" font-weight="700">VCC</text>
+<circle cx="874" cy="490" r="6" fill="#d7dde3" stroke="#8a95a3"/>
+<text x="888" y="495" font-size="13" fill="#ffffff" text-anchor="start" font-weight="700">GND</text>
+<circle cx="874" cy="520" r="6" fill="#d7dde3" stroke="#8a95a3"/>
+<text x="888" y="525" font-size="13" fill="#ffffff" text-anchor="start" font-weight="700">SCL</text>
+<circle cx="874" cy="550" r="6" fill="#d7dde3" stroke="#8a95a3"/>
+<text x="888" y="555" font-size="13" fill="#ffffff" text-anchor="start" font-weight="700">SDA</text>
+<circle cx="874" cy="580" r="6" fill="#d7dde3" stroke="#8a95a3"/>
+<text x="888" y="585" font-size="13" fill="#ffffff" text-anchor="start" font-weight="700">DC</text>
+<circle cx="874" cy="610" r="6" fill="#d7dde3" stroke="#8a95a3"/>
+<text x="888" y="615" font-size="13" fill="#ffffff" text-anchor="start" font-weight="700">CS</text>
+<circle cx="874" cy="640" r="6" fill="#d7dde3" stroke="#8a95a3"/>
+<text x="888" y="645" font-size="13" fill="#ffffff" text-anchor="start" font-weight="700">RST</text>
+<rect x="860" y="770" width="92" height="220" rx="10" fill="#1d2b4f" stroke="#121b33" stroke-width="3"/>
+<circle cx="1060" cy="880.0" r="128.0" fill="#1d2b4f" stroke="#121b33" stroke-width="3"/>
+<circle cx="1060" cy="880.0" r="104.0" fill="#000"/>
+<path d="M989.6,919.6 A81.4,81.4 0 1 1 1130.4,919.6" fill="none" stroke="#8B5CF6" stroke-width="9" stroke-linecap="round"/>
+<text x="1060" y="886.0" font-size="15" fill="#ffffff" text-anchor="middle" font-weight="700">RIGHT</text>
+<circle cx="874" cy="790" r="6" fill="#d7dde3" stroke="#8a95a3"/>
+<text x="888" y="795" font-size="13" fill="#ffffff" text-anchor="start" font-weight="700">VCC</text>
+<circle cx="874" cy="820" r="6" fill="#d7dde3" stroke="#8a95a3"/>
+<text x="888" y="825" font-size="13" fill="#ffffff" text-anchor="start" font-weight="700">GND</text>
+<circle cx="874" cy="850" r="6" fill="#d7dde3" stroke="#8a95a3"/>
+<text x="888" y="855" font-size="13" fill="#ffffff" text-anchor="start" font-weight="700">SCL</text>
+<circle cx="874" cy="880" r="6" fill="#d7dde3" stroke="#8a95a3"/>
+<text x="888" y="885" font-size="13" fill="#ffffff" text-anchor="start" font-weight="700">SDA</text>
+<circle cx="874" cy="910" r="6" fill="#d7dde3" stroke="#8a95a3"/>
+<text x="888" y="915" font-size="13" fill="#ffffff" text-anchor="start" font-weight="700">DC</text>
+<circle cx="874" cy="940" r="6" fill="#d7dde3" stroke="#8a95a3"/>
+<text x="888" y="945" font-size="13" fill="#ffffff" text-anchor="start" font-weight="700">CS</text>
+<circle cx="874" cy="970" r="6" fill="#d7dde3" stroke="#8a95a3"/>
+<text x="888" y="975" font-size="13" fill="#ffffff" text-anchor="start" font-weight="700">RST</text>
+<path d="M318,410 L420,410" fill="none" stroke="#ffffff" stroke-width="7" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M318,410 L420,410" fill="none" stroke="#e63946" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M420,130 L420,790" fill="none" stroke="#ffffff" stroke-width="7" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M420,130 L420,790" fill="none" stroke="#e63946" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M420,130 L868,130" fill="none" stroke="#ffffff" stroke-width="6" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M420,130 L868,130" fill="none" stroke="#e63946" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+<circle cx="420" cy="130" r="4" fill="#e63946" stroke="#fff" stroke-width="1.5"/>
+<path d="M420,460 L868,460" fill="none" stroke="#ffffff" stroke-width="6" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M420,460 L868,460" fill="none" stroke="#e63946" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+<circle cx="420" cy="460" r="4" fill="#e63946" stroke="#fff" stroke-width="1.5"/>
+<path d="M420,790 L868,790" fill="none" stroke="#ffffff" stroke-width="6" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M420,790 L868,790" fill="none" stroke="#e63946" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+<circle cx="420" cy="790" r="4" fill="#e63946" stroke="#fff" stroke-width="1.5"/>
+<circle cx="420" cy="410" r="4" fill="#e63946" stroke="#fff" stroke-width="1.5"/>
+<path d="M318,456 L450,456" fill="none" stroke="#ffffff" stroke-width="7" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M318,456 L450,456" fill="none" stroke="#222222" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M450,160 L450,820" fill="none" stroke="#ffffff" stroke-width="7" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M450,160 L450,820" fill="none" stroke="#222222" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M450,160 L868,160" fill="none" stroke="#ffffff" stroke-width="6" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M450,160 L868,160" fill="none" stroke="#222222" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+<circle cx="450" cy="160" r="4" fill="#222222" stroke="#fff" stroke-width="1.5"/>
+<path d="M450,490 L868,490" fill="none" stroke="#ffffff" stroke-width="6" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M450,490 L868,490" fill="none" stroke="#222222" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+<circle cx="450" cy="490" r="4" fill="#222222" stroke="#fff" stroke-width="1.5"/>
+<path d="M450,820 L868,820" fill="none" stroke="#ffffff" stroke-width="6" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M450,820 L868,820" fill="none" stroke="#222222" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+<circle cx="450" cy="820" r="4" fill="#222222" stroke="#fff" stroke-width="1.5"/>
+<circle cx="450" cy="456" r="4" fill="#222222" stroke="#fff" stroke-width="1.5"/>
+<path d="M318,502 L480,502" fill="none" stroke="#ffffff" stroke-width="7" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M318,502 L480,502" fill="none" stroke="#c026d3" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M480,190 L480,850" fill="none" stroke="#ffffff" stroke-width="7" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M480,190 L480,850" fill="none" stroke="#c026d3" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M480,190 L868,190" fill="none" stroke="#ffffff" stroke-width="6" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M480,190 L868,190" fill="none" stroke="#c026d3" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+<circle cx="480" cy="190" r="4" fill="#c026d3" stroke="#fff" stroke-width="1.5"/>
+<path d="M480,520 L868,520" fill="none" stroke="#ffffff" stroke-width="6" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M480,520 L868,520" fill="none" stroke="#c026d3" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+<circle cx="480" cy="520" r="4" fill="#c026d3" stroke="#fff" stroke-width="1.5"/>
+<path d="M480,850 L868,850" fill="none" stroke="#ffffff" stroke-width="6" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M480,850 L868,850" fill="none" stroke="#c026d3" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+<circle cx="480" cy="850" r="4" fill="#c026d3" stroke="#fff" stroke-width="1.5"/>
+<circle cx="480" cy="502" r="4" fill="#c026d3" stroke="#fff" stroke-width="1.5"/>
+<path d="M318,548 L510,548" fill="none" stroke="#ffffff" stroke-width="7" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M318,548 L510,548" fill="none" stroke="#f77f00" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M510,220 L510,880" fill="none" stroke="#ffffff" stroke-width="7" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M510,220 L510,880" fill="none" stroke="#f77f00" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M510,220 L868,220" fill="none" stroke="#ffffff" stroke-width="6" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M510,220 L868,220" fill="none" stroke="#f77f00" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+<circle cx="510" cy="220" r="4" fill="#f77f00" stroke="#fff" stroke-width="1.5"/>
+<path d="M510,550 L868,550" fill="none" stroke="#ffffff" stroke-width="6" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M510,550 L868,550" fill="none" stroke="#f77f00" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+<circle cx="510" cy="550" r="4" fill="#f77f00" stroke="#fff" stroke-width="1.5"/>
+<path d="M510,880 L868,880" fill="none" stroke="#ffffff" stroke-width="6" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M510,880 L868,880" fill="none" stroke="#f77f00" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+<circle cx="510" cy="880" r="4" fill="#f77f00" stroke="#fff" stroke-width="1.5"/>
+<circle cx="510" cy="548" r="4" fill="#f77f00" stroke="#fff" stroke-width="1.5"/>
+<path d="M318,594 L540,594" fill="none" stroke="#ffffff" stroke-width="7" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M318,594 L540,594" fill="none" stroke="#2a9d4b" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M540,250 L540,910" fill="none" stroke="#ffffff" stroke-width="7" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M540,250 L540,910" fill="none" stroke="#2a9d4b" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M540,250 L868,250" fill="none" stroke="#ffffff" stroke-width="6" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M540,250 L868,250" fill="none" stroke="#2a9d4b" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+<circle cx="540" cy="250" r="4" fill="#2a9d4b" stroke="#fff" stroke-width="1.5"/>
+<path d="M540,580 L868,580" fill="none" stroke="#ffffff" stroke-width="6" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M540,580 L868,580" fill="none" stroke="#2a9d4b" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+<circle cx="540" cy="580" r="4" fill="#2a9d4b" stroke="#fff" stroke-width="1.5"/>
+<path d="M540,910 L868,910" fill="none" stroke="#ffffff" stroke-width="6" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M540,910 L868,910" fill="none" stroke="#2a9d4b" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+<circle cx="540" cy="910" r="4" fill="#2a9d4b" stroke="#fff" stroke-width="1.5"/>
+<circle cx="540" cy="594" r="4" fill="#2a9d4b" stroke="#fff" stroke-width="1.5"/>
+<path d="M318,640 L570,640" fill="none" stroke="#ffffff" stroke-width="7" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M318,640 L570,640" fill="none" stroke="#0ea5e9" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M570,310 L570,970" fill="none" stroke="#ffffff" stroke-width="7" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M570,310 L570,970" fill="none" stroke="#0ea5e9" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M570,310 L868,310" fill="none" stroke="#ffffff" stroke-width="6" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M570,310 L868,310" fill="none" stroke="#0ea5e9" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+<circle cx="570" cy="310" r="4" fill="#0ea5e9" stroke="#fff" stroke-width="1.5"/>
+<path d="M570,640 L868,640" fill="none" stroke="#ffffff" stroke-width="6" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M570,640 L868,640" fill="none" stroke="#0ea5e9" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+<circle cx="570" cy="640" r="4" fill="#0ea5e9" stroke="#fff" stroke-width="1.5"/>
+<path d="M570,970 L868,970" fill="none" stroke="#ffffff" stroke-width="6" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M570,970 L868,970" fill="none" stroke="#0ea5e9" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+<circle cx="570" cy="970" r="4" fill="#0ea5e9" stroke="#fff" stroke-width="1.5"/>
+<circle cx="570" cy="640" r="4" fill="#0ea5e9" stroke="#fff" stroke-width="1.5"/>
+<path d="M318,686 L600,686 L600,280 L868,280" fill="none" stroke="#ffffff" stroke-width="7" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M318,686 L600,686 L600,280 L868,280" fill="none" stroke="#d4a017" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
+<text x="606" y="483.0" font-size="11" fill="#5f6b7a" text-anchor="start" font-weight="normal">CS1</text>
+<path d="M318,732 L630,732 L630,610 L868,610" fill="none" stroke="#ffffff" stroke-width="7" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M318,732 L630,732 L630,610 L868,610" fill="none" stroke="#d4a017" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
+<text x="636" y="671.0" font-size="11" fill="#5f6b7a" text-anchor="start" font-weight="normal">CS2</text>
+<path d="M318,778 L660,778 L660,940 L868,940" fill="none" stroke="#ffffff" stroke-width="7" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M318,778 L660,778 L660,940 L868,940" fill="none" stroke="#d4a017" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
+<text x="666" y="859.0" font-size="11" fill="#5f6b7a" text-anchor="start" font-weight="normal">CS3</text>
+<text x="80" y="1040" font-size="13" fill="#5f6b7a" text-anchor="start" font-weight="normal">Tip: join the shared lines on a small strip of perfboard (or Wago-style connectors),</text>
+<text x="80" y="1060" font-size="13" fill="#5f6b7a" text-anchor="start" font-weight="normal">then run one wire from there to each display. Button: BOOT (GPIO0). LED: on-board RGB (GPIO48).</text>
+<rect x="40" y="1080" width="1120" height="238" rx="12" fill="#ffffff" stroke="#e2e6ea"/>
+<text x="64" y="1108" font-size="13" fill="#1f2933" text-anchor="start" font-weight="700">Display</text>
+<text x="190" y="1108" font-size="13" fill="#1f2933" text-anchor="start" font-weight="700">Wire</text>
+<text x="330" y="1108" font-size="13" fill="#1f2933" text-anchor="start" font-weight="700">Board pin</text>
+<text x="560" y="1108" font-size="13" fill="#1f2933" text-anchor="start" font-weight="700">Notes</text>
+<text x="64" y="1132" font-size="12.5" fill="#1f2933" text-anchor="start" font-weight="600">VCC</text>
+<rect x="190" y="1122" width="26" height="10" rx="3" fill="#e63946"/>
+<text x="330" y="1132" font-size="12.5" fill="#1f2933" text-anchor="start" font-weight="normal">3V3</text>
+<text x="560" y="1132" font-size="12.5" fill="#5f6b7a" text-anchor="start" font-weight="normal">all three displays (not 5V)</text>
+<text x="64" y="1154" font-size="12.5" fill="#1f2933" text-anchor="start" font-weight="600">GND</text>
+<rect x="190" y="1144" width="26" height="10" rx="3" fill="#222222"/>
+<text x="330" y="1154" font-size="12.5" fill="#1f2933" text-anchor="start" font-weight="normal">GND</text>
+<text x="560" y="1154" font-size="12.5" fill="#5f6b7a" text-anchor="start" font-weight="normal">all three</text>
+<text x="64" y="1176" font-size="12.5" fill="#1f2933" text-anchor="start" font-weight="600">SCL</text>
+<rect x="190" y="1166" width="26" height="10" rx="3" fill="#c026d3"/>
+<text x="330" y="1176" font-size="12.5" fill="#1f2933" text-anchor="start" font-weight="normal">GPIO12</text>
+<text x="560" y="1176" font-size="12.5" fill="#5f6b7a" text-anchor="start" font-weight="normal">SPI clock, all three</text>
+<text x="64" y="1198" font-size="12.5" fill="#1f2933" text-anchor="start" font-weight="600">SDA</text>
+<rect x="190" y="1188" width="26" height="10" rx="3" fill="#f77f00"/>
+<text x="330" y="1198" font-size="12.5" fill="#1f2933" text-anchor="start" font-weight="normal">GPIO11</text>
+<text x="560" y="1198" font-size="12.5" fill="#5f6b7a" text-anchor="start" font-weight="normal">SPI data (MOSI), all three</text>
+<text x="64" y="1220" font-size="12.5" fill="#1f2933" text-anchor="start" font-weight="600">DC</text>
+<rect x="190" y="1210" width="26" height="10" rx="3" fill="#2a9d4b"/>
+<text x="330" y="1220" font-size="12.5" fill="#1f2933" text-anchor="start" font-weight="normal">GPIO9</text>
+<text x="560" y="1220" font-size="12.5" fill="#5f6b7a" text-anchor="start" font-weight="normal">all three</text>
+<text x="64" y="1242" font-size="12.5" fill="#1f2933" text-anchor="start" font-weight="600">RST</text>
+<rect x="190" y="1232" width="26" height="10" rx="3" fill="#0ea5e9"/>
+<text x="330" y="1242" font-size="12.5" fill="#1f2933" text-anchor="start" font-weight="normal">GPIO8</text>
+<text x="560" y="1242" font-size="12.5" fill="#5f6b7a" text-anchor="start" font-weight="normal">all three</text>
+<text x="64" y="1264" font-size="12.5" fill="#1f2933" text-anchor="start" font-weight="600">CS left</text>
+<rect x="190" y="1254" width="26" height="10" rx="3" fill="#d4a017"/>
+<text x="330" y="1264" font-size="12.5" fill="#1f2933" text-anchor="start" font-weight="normal">GPIO10</text>
+<text x="560" y="1264" font-size="12.5" fill="#5f6b7a" text-anchor="start" font-weight="normal">left display only</text>
+<text x="64" y="1286" font-size="12.5" fill="#1f2933" text-anchor="start" font-weight="600">CS middle</text>
+<rect x="190" y="1276" width="26" height="10" rx="3" fill="#d4a017"/>
+<text x="330" y="1286" font-size="12.5" fill="#1f2933" text-anchor="start" font-weight="normal">GPIO13</text>
+<text x="560" y="1286" font-size="12.5" fill="#5f6b7a" text-anchor="start" font-weight="normal">middle display only</text>
+<text x="64" y="1308" font-size="12.5" fill="#1f2933" text-anchor="start" font-weight="600">CS right</text>
+<rect x="190" y="1298" width="26" height="10" rx="3" fill="#d4a017"/>
+<text x="330" y="1308" font-size="12.5" fill="#1f2933" text-anchor="start" font-weight="normal">GPIO14</text>
+<text x="560" y="1308" font-size="12.5" fill="#5f6b7a" text-anchor="start" font-weight="normal">right display only</text>
+</svg>

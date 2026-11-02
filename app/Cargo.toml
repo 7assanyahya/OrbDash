@@ -1,6 +1,6 @@
 [package]
 name = "orbdash"
-version = "1.1.0"
+version = "1.2.0"
 edition = "2024"
 description = "Desktop app that controls a round GC9A01 display on an Arduino: Claude usage, clock, PC stats and custom widgets"
 license = "MIT"
